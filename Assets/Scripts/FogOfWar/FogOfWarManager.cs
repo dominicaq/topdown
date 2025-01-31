@@ -1,20 +1,11 @@
 using UnityEngine;
 using FogOfWar;
+using System.Collections.Generic;
 
 public class FogOfWarManager : MonoBehaviour
 {
     [Header("Fog Data")]
     public RenderTexture fogTexture;
-    readonly private static int[,] octants = {
-        { 1, 0 },    // Right
-        { 1, 1 },    // Bottom-right
-        { 0, 1 },    // Bottom
-        { -1, 1 },   // Bottom-left
-        { -1, 0 },   // Left
-        { -1, -1 },  // Top-left
-        { 0, -1 },   // Top
-        { 1, -1 }    // Top-right
-    };
 
     [Header("Chunk Properties")]
     public float tileSize = 1.0f;
@@ -32,7 +23,9 @@ public class FogOfWarManager : MonoBehaviour
         // chunkCenter = new Vector2Int(chunkSize / 2, chunkSize / 2);
     }
 
+    // Debug
     private float angle = 0.0f;
+    private Vector3 circularPosition;
 
     void Update() {
         float radius = 10.0f;
@@ -43,10 +36,10 @@ public class FogOfWarManager : MonoBehaviour
         float x = radius * Mathf.Cos(angle);
         float z = radius * Mathf.Sin(angle);
 
-        Vector3 circularPosition = new Vector3(x, 0, z);
+        circularPosition = new Vector3(x, 0, z);
 
         ResetFog(0);
-        RevealFog(circularPosition, 32);
+        RevealFog(circularPosition, 16);
     }
 
     /*
@@ -108,135 +101,120 @@ public class FogOfWarManager : MonoBehaviour
         if (!IsInBounds(centerX, centerY))
             return;
 
-        // Reveal the center tile first
         lightMap[centerX, centerY].Visible = true;
+        lightMap[centerX, centerY].Seen = true;
         int centerHeight = lightMap[centerX, centerY].Height;
 
         Vector3Int origin = new Vector3Int(centerX, centerY, centerHeight);
-        for (uint octant = 0; octant < 8; octant++) {
-            CastLight(octant, ref origin, radius, 1 , new Slope(1, 1), new Slope(0, 1));
+        for (int octant = 0; octant < 4; octant++) {
+            CastLight(octant , ref origin, radius);
         }
     }
 
     /*
     * Shadow Casting
     */
-    struct Slope {
-        public int x, y;
-        public Slope(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-    };
+    private void CastLight(int quadrant, ref Vector3Int origin, int radius) {
+        Stack<(int, float, float)> rows = new Stack<(int, float, float)>();
+        rows.Push((1, -1f, 1f)); // Start row (depth = 1, slopes = [-1, 1])
 
-    private void CastLight(uint octant, ref Vector3Int origin, int radius, int x, Slope top, Slope bottom) {
-        for (; (uint)x <= radius; x++) {
-            int topY = (top.x == 0 || top.x * 2 == 0) ? x : ((x * 2 + 1) * top.y + top.x - 1) / (top.x * 2);
-            int bottomY = (bottom.x == 0 || bottom.x * 2 == 0) ? 0 : ((x * 2 - 1) * bottom.y + bottom.x) / (bottom.x * 2);
+        // Corrected transformation matrix
+        int[,] transforms = {
+            {  0,  1,  1,  0 },  // North
+            {  0, -1, -1,  0 },  // South
+            {  -1,  0,  0, -1 }, // West
+            {  1,  0,  0,  1 }   // East
+        };
 
-            int wasBlocked = -1;
-            for (int y = topY; y >= bottomY; y--) {
-                int tx = origin.x, ty = origin.y;
-                switch(octant) {
-                    case 0: tx += x; ty -= y; break;
-                    case 1: tx += y; ty -= x; break;
-                    case 2: tx -= y; ty -= x; break;
-                    case 3: tx -= x; ty -= y; break;
-                    case 4: tx -= x; ty += y; break;
-                    case 5: tx -= y; ty += x; break;
-                    case 6: tx += y; ty += x; break;
-                    case 7: tx += x; ty += y; break;
+        int xx = transforms[quadrant, 0];
+        int xy = transforms[quadrant, 1];
+        int yx = transforms[quadrant, 2];
+        int yy = transforms[quadrant, 3];
+
+        while (rows.Count > 0) {
+            var (depth, startSlope, endSlope) = rows.Pop();
+            int minCol = Mathf.CeilToInt(depth * startSlope);
+            int maxCol = Mathf.FloorToInt(depth * endSlope);
+
+            int prevTx = -1, prevTy = -1;
+
+            for (int col = minCol; col <= maxCol; col++) {
+                int dx = depth * xx + col * xy;
+                int dy = depth * yx + col * yy;
+                int tx = origin.x + dx;
+                int ty = origin.y + dy;
+
+                if (!IsInBounds(tx, ty) || (dx * dx + dy * dy > radius * radius))
+                    continue;
+
+                lightMap[tx, ty].Visible = true;
+                lightMap[tx, ty].Seen = true;
+
+                bool isWall = IsBlocking(tx, ty, origin.z);
+                bool wasWall = (prevTx != -1 && IsBlocking(prevTx, prevTy, origin.z));
+                if (wasWall && !isWall) {
+                    startSlope = GetSlope(depth, col);
+                }
+                if (!wasWall && isWall) {
+                    rows.Push((depth + 1, startSlope, GetSlope(depth, col)));
                 }
 
-                int dx = tx - origin.x;
-                int dy = ty - origin.y;
-                int currDist = dx * dx + dy * dy;
-                bool inRange = IsInBounds(tx, ty) && currDist <= radius * radius;
-                if(inRange) {
-                    // NOTE: use the next line instead if you want the algorithm to be symmetrical
-                    // if(inRange && (y != topY || top.Y*x >= top.X*y) && (y != bottomY || bottom.Y*x <= bottom.X*y)) SetVisible(tx, ty);
-                    lightMap[tx, ty].Visible = true;
-                }
+                prevTx = tx;
+                prevTy = ty;
+            }
+
+            if (prevTx != -1 && prevTy != -1 && !IsBlocking(prevTx, prevTy, origin.z)) {
+                rows.Push((depth + 1, startSlope, endSlope));
             }
         }
+    }
+
+
+    private float GetSlope(int depth, int col) {
+        return (2f * col - 1) / (2f * depth);
+    }
+
+    private bool IsBlocking(int x, int y, int height) {
+        return lightMap[x, y].Height > height;
+    }
+
+    private bool IsWall(int x, int y, int height) {
+        if (!IsInBounds(x, y))
+            return false;
+
+        return lightMap[x, y].Height > height;
     }
 
     private bool IsInBounds(int x, int y) {
         return x >= 0 && x < chunkSize && y >= 0 && y < chunkSize;
     }
 
-    // Reveals tiles in a circular radius around a center point (raycasting)
-    // private void RevealFog(Vector3 center, int radius)
-    // {
-    //     // Convert world position to grid coordinates by factoring in the tile size
-    //     int centerX = Mathf.FloorToInt(center.x / tileSize) + chunkSize / 2;
-    //     int centerZ = Mathf.FloorToInt(center.z / tileSize) + chunkSize / 2;
-    //     int maxHeight = lightMap[centerX, centerZ].Height;
-
-    //     int sectors = 8;
-    //     for (int i = 0; i < sectors; i++)
-    //     {
-    //         // Calculate the start and end angles for this sector
-    //         float startAngle = Mathf.Deg2Rad * (i * (360 / sectors)); // each sector's starting angle
-    //         float endAngle = Mathf.Deg2Rad * ((i + 1) * (360 / sectors)); // each sector's ending angle
-
-    //         // Iterate through each tile in the sector range
-    //         for (float angle = startAngle; angle < endAngle; angle += 0.05f) // granularity: step through each direction
-    //         {
-    //             float dx = Mathf.Cos(angle);
-    //             float dz = Mathf.Sin(angle);
-
-    //             for (int distance = 1; distance <= radius; distance++)
-    //             {
-    //                 // Calculate target tile position
-    //                 int tileX = centerX + Mathf.FloorToInt(dx * distance);
-    //                 int tileZ = centerZ + Mathf.FloorToInt(dz * distance);
-
-    //                 // Ensure the tile is within bounds
-    //                 if (tileX >= 0 && tileX < chunkSize && tileZ >= 0 && tileZ < chunkSize)
-    //                 {
-    //                     ref TileData targetTile = ref lightMap[tileX, tileZ];
-
-    //                     // Only reveal tile if it's lower than or equal to the maxHeight encountered
-    //                     if (targetTile.Height <= maxHeight)
-    //                     {
-    //                         targetTile.Visible = true;
-    //                     }
-    //                     else
-    //                     {
-    //                         // Block view if a taller tile is encountered
-    //                         break;
-    //                     }
-
-    //                     // Update maxHeight with the current tile's height
-    //                     maxHeight = Mathf.Max(maxHeight, targetTile.Height);
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-
     // Debug
-    private void OnDrawGizmos()
-    {
-        if (lightMap == null) return;
+    private void OnDrawGizmos() {
+        if (lightMap == null) {
+            return;
+        }
 
-        // Loop through all tiles in the chunk
-        for (int x = 0; x < chunkSize; x++)
-        {
-            for (int z = 0; z < chunkSize; z++)
-            {
-                // Calculate the world position of each tile
+        Gizmos.color = Color.red;
+        Gizmos.DrawSphere(circularPosition, 0.5f);
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
                 float height = lightMap[x, z].Height;
                 Vector3 position = new Vector3((x - chunkSize / 2) * tileSize, height, (z - chunkSize / 2) * tileSize);
 
                 // Set the Gizmos color based on visibility
-                Gizmos.color = lightMap[x, z].Visible ? Color.clear : Color.green;
+                if (lightMap[x, z].Visible) {
+                    Gizmos.color = Color.clear;
+                } else if (lightMap[x, z].Seen) {
+                    Gizmos.color = Color.gray; // Previously seen but not currently visible
+                } else {
+                    Gizmos.color = Color.green; // Never seen
+                }
+
                 Gizmos.DrawWireCube(position, new Vector3(tileSize, 0.1f, tileSize));
             }
         }
     }
-
 }
 
 
