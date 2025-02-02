@@ -1,18 +1,16 @@
 using UnityEngine;
 using FogOfWar;
 using System.Collections.Generic;
+using System.Diagnostics;
 
-public class FogOfWarManager : MonoBehaviour
+public class FogManager : MonoBehaviour
 {
-    [Header("Fog Data")]
-    public RenderTexture fogTexture;
-
     [Header("Chunk Properties")]
     public float tileSize = 1.0f;
     public int chunkSize = 64;
 
     [Header("Chunk Data")]
-    private TileData[,] lightMap;
+    public TileData[,] lightMap;
     private Vector2Int chunkCenter;
 
     void Start() {
@@ -20,10 +18,14 @@ public class FogOfWarManager : MonoBehaviour
         lightMap = new TileData[chunkSize, chunkSize];
         InitGrid();
 
+        // Perfomance check (will cause the game to freeze for a bit)
+        stopwatch = new Stopwatch();
+        // TestPerformance();
+
         // chunkCenter = new Vector2Int(chunkSize / 2, chunkSize / 2);
     }
 
-    // Debug
+    // TEMP Debug
     private float angle = 0.0f;
     private Vector3 circularPosition;
 
@@ -40,6 +42,38 @@ public class FogOfWarManager : MonoBehaviour
 
         ResetFog(0);
         RevealFog(circularPosition, 16);
+    }
+
+    /*
+    * Performance Check
+    */
+    public int maxAgents = 1000;
+    private Stopwatch stopwatch;
+    void TestPerformance()
+    {
+        for (int agentCount = 1; agentCount <= maxAgents; agentCount++)
+        {
+            // Start the timer
+            stopwatch.Reset();
+            stopwatch.Start();
+
+            // Simulate the agents calling the RevealFog function
+            for (int i = 0; i < agentCount; i++)
+            {
+                RevealFog(circularPosition, 16);
+            }
+
+            // Stop the timer and log the result
+            stopwatch.Stop();
+            // UnityEngine.Debug.Log($"Tested {agentCount} agents. Time taken: {stopwatch.ElapsedMilliseconds} ms");
+
+            // You can decide based on the elapsed time when performance degrades
+            if (stopwatch.ElapsedMilliseconds > 100) // Example threshold for "substantial drop"
+            {
+                UnityEngine.Debug.LogWarning($"Performance drops significantly after {agentCount} agents.");
+                break; // Stop testing after performance drops substantially
+            }
+        }
     }
 
     /*
@@ -93,7 +127,7 @@ public class FogOfWarManager : MonoBehaviour
         }
     }
 
-    // Source: https://www.adammil.net/blog/v125_Roguelike_Vision_Algorithms.html#shadowcode
+    // Source: https://www.albertford.com/shadowcasting/
     public void RevealFog(Vector3 center, int radius) {
         int centerX = Mathf.FloorToInt(center.x / tileSize) + chunkSize / 2;
         int centerY = Mathf.FloorToInt(center.z / tileSize) + chunkSize / 2;
@@ -118,7 +152,7 @@ public class FogOfWarManager : MonoBehaviour
         Stack<(int, float, float)> rows = new Stack<(int, float, float)>();
         rows.Push((1, -1f, 1f)); // Start row (depth = 1, slopes = [-1, 1])
 
-        // Corrected transformation matrix
+        // Transformation matrix
         int[,] transforms = {
             {  0,  1,  1,  0 },  // North
             {  0, -1, -1,  0 },  // South
@@ -144,7 +178,8 @@ public class FogOfWarManager : MonoBehaviour
                 int tx = origin.x + dx;
                 int ty = origin.y + dy;
 
-                if (!IsInBounds(tx, ty) || (dx * dx + dy * dy > radius * radius))
+                int distSquared = dx * dx + dy * dy;
+                if (!IsInBounds(tx, ty) || (distSquared > radius * radius))
                     continue;
 
                 lightMap[tx, ty].Visible = true;
@@ -169,7 +204,6 @@ public class FogOfWarManager : MonoBehaviour
         }
     }
 
-
     private float GetSlope(int depth, int col) {
         return (2f * col - 1) / (2f * depth);
     }
@@ -178,18 +212,13 @@ public class FogOfWarManager : MonoBehaviour
         return lightMap[x, y].Height > height;
     }
 
-    private bool IsWall(int x, int y, int height) {
-        if (!IsInBounds(x, y))
-            return false;
-
-        return lightMap[x, y].Height > height;
-    }
-
     private bool IsInBounds(int x, int y) {
         return x >= 0 && x < chunkSize && y >= 0 && y < chunkSize;
     }
 
-    // Debug
+    /*
+    * Debug
+    */
     private void OnDrawGizmos() {
         if (lightMap == null) {
             return;

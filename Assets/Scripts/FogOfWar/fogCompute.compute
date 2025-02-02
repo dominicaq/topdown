@@ -1,0 +1,38 @@
+#pragma kernel CSMain
+
+RWTexture2D<float4> Result;  // Output texture
+StructuredBuffer<byte> LightMap;  // Lightmap input as bytes
+
+uint chunkSize;
+uint upscaleFactor;
+
+[numthreads(8, 8, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    uint upscaleWidth = chunkSize * upscaleFactor;
+    uint upscaleHeight = chunkSize * upscaleFactor;
+
+    if (id.x >= upscaleWidth || id.y >= upscaleHeight) return;
+
+    // Compute the tile index in the lightmap
+    uint tileX = id.x / upscaleFactor;
+    uint tileY = id.y / upscaleFactor;
+    uint index = tileY * chunkSize + tileX;
+
+    // Read packed TileData byte
+    byte data = LightMap[index];
+
+    // Decode visibility, seen, and height
+    bool visible = (data & 0x80) != 0; // 0x80 == 10000000 in binary (bit 7)
+    bool seen = (data & 0x40) != 0;    // 0x40 == 01000000 in binary (bit 6)
+
+    // Calculate grayscale value (fog color)
+    float fogValue = float(visible);    // 1.0 for visible, 0.0 for not visible
+    fogValue = mix(fogValue, 0.5, float(seen)); // Blend between visible (1.0) and seen (0.5)
+
+    // Calculate alpha (transparency) without branches
+    float alpha = float(visible) * 0.0 + float(seen) * 0.5 + float(!seen && !visible) * 1.0;
+
+    // Set the output color (grayscale with transparency)
+    Result[id.xy] = float4(fogValue, fogValue, fogValue, alpha);
+}

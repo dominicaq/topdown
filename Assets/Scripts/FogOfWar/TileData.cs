@@ -9,11 +9,12 @@ namespace FogOfWar
     {
         // Packed data structure: visbility | Seen | Height
         private byte data;
+        public readonly byte GetPackedData() {return data;}
 
         // Visible: 1 bit (bit 7)
         public bool Visible
         {
-            get => (data & 0b10000000) != 0;
+            readonly get => (data & 0b10000000) != 0;
             set
             {
                 if (value)
@@ -26,7 +27,7 @@ namespace FogOfWar
         // Seen: 1 bit (bit 6)
         public bool Seen
         {
-            get => (data & 0b01000000) != 0;
+            readonly get => (data & 0b01000000) != 0;
             set
             {
                 if (value)
@@ -38,7 +39,7 @@ namespace FogOfWar
 
         public bool ClientVisible // NOTE: dont use this var, client visible should be per agent
         {
-            get => (data & 0b00100000) != 0;
+            readonly get => (data & 0b00100000) != 0;
             set
             {
                 if (value)
@@ -51,7 +52,7 @@ namespace FogOfWar
         // Height: 5 bits (bits 0–4)
         public byte Height
         {
-            get => (byte)(data & 0b00011111); // Extract bits 0–4.
+            readonly get => (byte)(data & 0b00011111); // Extract bits 0–4.
             set
             {
                 // Clear bits 0–4 and set new height.

@@ -319,7 +319,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.82048, z: -0, w: 0.57167536}
   m_LocalPosition: {x: -15.2, y: 0.6, z: 13.4}
-  m_LocalScale: {x: 1.7722028, y: 5.3578124, z: 50.74613}
+  m_LocalScale: {x: 2.7469144, y: 5.3578124, z: 50.74613}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -519,7 +519,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.36751425, z: -0, w: 0.9300179}
   m_LocalPosition: {x: 0.2, y: 0.6, z: -4.4}
-  m_LocalScale: {x: 1.7722028, y: 5.3578124, z: 50.74613}
+  m_LocalScale: {x: 3.7437785, y: 5.3578124, z: 50.74613}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -534,6 +534,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1140297684}
   - component: {fileID: 1140297685}
+  - component: {fileID: 1140297686}
   m_Layer: 0
   m_Name: Scripts
   m_TagString: Untagged
@@ -568,9 +569,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6bcd746226ade4bf7861962a723b70de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  fogTexture: {fileID: 0}
-  tileSize: 1
+  tileSize: 0.75
   chunkSize: 64
+  maxAgents: 1000
+--- !u!114 &1140297686
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1140297682}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e3f5e8a2c3f814142933a0249dd89f62, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  upscaleFactor: 1
+  fogComputeShader: {fileID: 7200000, guid: 9c6d19100a0b04253b2ef685efecf084, type: 3}
+  fogTexture: {fileID: 0}
 --- !u!1 &1181936458
 GameObject:
   m_ObjectHideFlags: 0
@@ -782,7 +798,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.36751425, z: -0, w: 0.9300179}
   m_LocalPosition: {x: 14.1, y: 0.6, z: 5.6}
-  m_LocalScale: {x: 2.2994392, y: 5.3578124, z: 50.74613}
+  m_LocalScale: {x: 4.8575654, y: 5.3578124, z: 50.74613}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -890,7 +906,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0.82048, z: -0, w: 0.57167536}
   m_LocalPosition: {x: -6, y: 0.6, z: 3.2}
-  m_LocalScale: {x: 1.7722028, y: 5.3578124, z: 50.74613}
+  m_LocalScale: {x: 2.7469144, y: 5.3578124, z: 50.74613}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
