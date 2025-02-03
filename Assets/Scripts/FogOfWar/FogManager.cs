@@ -6,7 +6,7 @@ using System.Diagnostics;
 public class FogManager : MonoBehaviour
 {
     [Header("Chunk Properties")]
-    public float tileSize = 1.0f;
+    public int tileSize = 1;
     public int chunkSize = 64;
 
     [Header("Chunk Data")]
@@ -41,7 +41,7 @@ public class FogManager : MonoBehaviour
         circularPosition = new Vector3(x, 0, z);
 
         ResetFog(0);
-        RevealFog(circularPosition, 16);
+        RevealFog(circularPosition, 20);
     }
 
     /*

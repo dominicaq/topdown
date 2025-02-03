@@ -1,38 +1,47 @@
 #pragma kernel CSMain
 
-RWTexture2D<float4> Result;  // Output texture
-StructuredBuffer<byte> LightMap;  // Lightmap input as bytes
+RWTexture2D<float4> Result;
+StructuredBuffer<uint> LightMap;
 
-uint chunkSize;
-uint upscaleFactor;
+int _chunkSize;
+int upscaleFactor;
+int tileSize;
 
-[numthreads(8, 8, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
+[numthreads(4, 8, 1)] // 4 tiles in X, 8 tiles in Y per thread group
+void CSMain(uint2 id : SV_DispatchThreadID)
 {
-    uint upscaleWidth = chunkSize * upscaleFactor;
-    uint upscaleHeight = chunkSize * upscaleFactor;
+    // Compute base tile index
+    int tileX = id.x << 2;  // Each thread processes 4 tiles
+    int tileY = id.y;
+    int upscaleTileSize = tileSize * upscaleFactor;
 
-    if (id.x >= upscaleWidth || id.y >= upscaleHeight) return;
+    // Compute packed index (each int stores 4 tiles)
+    int packedIndex = (tileY * _chunkSize + tileX) >> 2;
 
-    // Compute the tile index in the lightmap
-    uint tileX = id.x / upscaleFactor;
-    uint tileY = id.y / upscaleFactor;
-    uint index = tileY * chunkSize + tileX;
+    // Read packed tile data (4 tiles per uint)
+    uint packedData = LightMap[packedIndex];
 
-    // Read packed TileData byte
-    byte data = LightMap[index];
+    // Process each tile within the packed int
+    for (int i = 0; i < 4; i++)
+    {
+        int byteOffset = i << 3;
+        uint tileByte = (packedData >> byteOffset) & 0xFF;
 
-    // Decode visibility, seen, and height
-    bool visible = (data & 0x80) != 0; // 0x80 == 10000000 in binary (bit 7)
-    bool seen = (data & 0x40) != 0;    // 0x40 == 01000000 in binary (bit 6)
+        // Compute fog color using branch-free logic
+        float4 fogColor = float4(0, 0, 0, 1) * ((tileByte & 0x80) == 0) +   // Unseen
+                          float4(0.5, 0.5, 0.5, 0.5) * ((tileByte & 0x40) != 0) +
+                          float4(1, 1, 1, 0) * ((tileByte & 0x80) != 0);    // Visible
 
-    // Calculate grayscale value (fog color)
-    float fogValue = float(visible);    // 1.0 for visible, 0.0 for not visible
-    fogValue = mix(fogValue, 0.5, float(seen)); // Blend between visible (1.0) and seen (0.5)
+        // Calculate base upscale position
+        int2 basePos = int2((tileX + i) * upscaleTileSize, tileY * upscaleTileSize);
 
-    // Calculate alpha (transparency) without branches
-    float alpha = float(visible) * 0.0 + float(seen) * 0.5 + float(!seen && !visible) * 1.0;
-
-    // Set the output color (grayscale with transparency)
-    Result[id.xy] = float4(fogValue, fogValue, fogValue, alpha);
+        // Write upscale pixels in parallel
+        for (int ux = 0; ux < upscaleTileSize; ux++)
+        {
+            for (int uy = 0; uy < upscaleTileSize; uy++)
+            {
+                Result[basePos + int2(ux, uy)] = fogColor;
+            }
+        }
+    }
 }
