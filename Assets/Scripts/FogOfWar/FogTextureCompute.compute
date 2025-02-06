@@ -28,9 +28,10 @@ void CSMain(uint2 id : SV_DispatchThreadID)
         uint tileByte = (packedData >> byteOffset) & 0xFF;
 
         // Compute fog color using branch-free logic
-        float4 fogColor = float4(0, 0, 0, 1) * ((tileByte & 0x80) == 0) +   // Unseen
-                          float4(0.5, 0.5, 0.5, 0.5) * ((tileByte & 0x40) != 0) +
-                          float4(1, 1, 1, 0) * ((tileByte & 0x80) != 0);    // Visible
+        float4 fogColor = float4(0, 0, 0, 1) * ((tileByte & 0x80) == 0) +  // Unseen (Opaque Black)
+        float4(0.5, 0.5, 0.5, 0.5) * ((tileByte & 0x40) != 0) +
+        float4(0, 0, 0, 0) * ((tileByte & 0x80) != 0);    // Visible (Fully Transparent)
+
 
         // Calculate base upscale position
         int2 basePos = int2((tileX + i) * upscaleTileSize, tileY * upscaleTileSize);

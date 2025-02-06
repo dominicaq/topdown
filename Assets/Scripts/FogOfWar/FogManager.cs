@@ -7,27 +7,27 @@ public class FogManager : MonoBehaviour
 {
     [Header("Chunk Properties")]
     public int tileSize = 1;
+    public int maxHeight = 32;
     public int chunkSize = 64;
 
     [Header("Chunk Data")]
     public TileData[,] lightMap;
     private Vector2Int chunkCenter;
 
+    [Header("Debugging")]
+    public bool drawGrid = true;
+
+    // TEMP Debug (circular moving agent)
+    private float angle = 0.0f;
+    private Vector3 circularPosition;
+
     void Start() {
         // Initialize the grid of TileData
         lightMap = new TileData[chunkSize, chunkSize];
         InitGrid();
 
-        // Perfomance check (will cause the game to freeze for a bit)
-        stopwatch = new Stopwatch();
-        // TestPerformance();
-
         // chunkCenter = new Vector2Int(chunkSize / 2, chunkSize / 2);
     }
-
-    // TEMP Debug
-    private float angle = 0.0f;
-    private Vector3 circularPosition;
 
     void Update() {
         float radius = 10.0f;
@@ -42,38 +42,6 @@ public class FogManager : MonoBehaviour
 
         ResetFog(0);
         RevealFog(circularPosition, 20);
-    }
-
-    /*
-    * Performance Check
-    */
-    public int maxAgents = 1000;
-    private Stopwatch stopwatch;
-    void TestPerformance()
-    {
-        for (int agentCount = 1; agentCount <= maxAgents; agentCount++)
-        {
-            // Start the timer
-            stopwatch.Reset();
-            stopwatch.Start();
-
-            // Simulate the agents calling the RevealFog function
-            for (int i = 0; i < agentCount; i++)
-            {
-                RevealFog(circularPosition, 16);
-            }
-
-            // Stop the timer and log the result
-            stopwatch.Stop();
-            // UnityEngine.Debug.Log($"Tested {agentCount} agents. Time taken: {stopwatch.ElapsedMilliseconds} ms");
-
-            // You can decide based on the elapsed time when performance degrades
-            if (stopwatch.ElapsedMilliseconds > 100) // Example threshold for "substantial drop"
-            {
-                UnityEngine.Debug.LogWarning($"Performance drops significantly after {agentCount} agents.");
-                break; // Stop testing after performance drops substantially
-            }
-        }
     }
 
     /*
@@ -99,10 +67,14 @@ public class FogManager : MonoBehaviour
 
                 byte tileHeight = 0;
 
+                // Note: I noticed the grid positon was off center by -0.5f so I added 0.5f to x and z
                 // Perform a raycast from the tile's center downwards to create a discrete heightmap
-                Vector3 tileCenter = new Vector3((globalX - chunkSize / 2) * tileSize, 100f, (globalZ - chunkSize / 2) * tileSize);
+                Vector3 tileCenter = new Vector3(
+                    (globalX - chunkSize / 2) * tileSize + 0.5f,
+                    100f,
+                    (globalZ - chunkSize / 2) * tileSize + 0.5f);
                 if (Physics.Raycast(tileCenter, Vector3.down, out RaycastHit hit)) {
-                    float height = Mathf.Clamp(Mathf.Floor(hit.point.y), 0f, 32f);
+                    int height = Mathf.Clamp((int)Mathf.Floor(hit.point.y), 0, maxHeight);
                     tileHeight = (byte)height;
                 }
 
@@ -154,10 +126,10 @@ public class FogManager : MonoBehaviour
 
         // Transformation matrix
         int[,] transforms = {
-            {  0,  1,  1,  0 },  // North
-            {  0, -1, -1,  0 },  // South
-            {  -1,  0,  0, -1 }, // West
-            {  1,  0,  0,  1 }   // East
+            { 0,  1,  1,  0 },  // North
+            { 0, -1, -1,  0 },  // South
+            { -1,  0,  0, -1 }, // West
+            { 1,  0,  0,  1 }   // East
         };
 
         int xx = transforms[quadrant, 0];
@@ -186,7 +158,7 @@ public class FogManager : MonoBehaviour
                 lightMap[tx, ty].Seen = true;
 
                 bool isWall = IsBlocking(tx, ty, origin.z);
-                bool wasWall = (prevTx != -1 && IsBlocking(prevTx, prevTy, origin.z));
+                bool wasWall = prevTx != -1 && IsBlocking(prevTx, prevTy, origin.z);
                 if (wasWall && !isWall) {
                     startSlope = GetSlope(depth, col);
                 }
@@ -220,7 +192,7 @@ public class FogManager : MonoBehaviour
     * Debug
     */
     private void OnDrawGizmos() {
-        if (lightMap == null) {
+        if (lightMap == null || !drawGrid) {
             return;
         }
 
@@ -229,7 +201,10 @@ public class FogManager : MonoBehaviour
         for (int x = 0; x < chunkSize; x++) {
             for (int z = 0; z < chunkSize; z++) {
                 float height = lightMap[x, z].Height;
-                Vector3 position = new Vector3((x - chunkSize / 2) * tileSize, height, (z - chunkSize / 2) * tileSize);
+                Vector3 position = new Vector3(
+                    (x - chunkSize / 2) * tileSize + 0.5f,
+                    height,
+                    (z - chunkSize / 2) * tileSize + 0.5f);
 
                 // Set the Gizmos color based on visibility
                 if (lightMap[x, z].Visible) {
