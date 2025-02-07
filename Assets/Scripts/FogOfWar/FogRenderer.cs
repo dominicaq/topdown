@@ -35,13 +35,13 @@ namespace FogOfWar
             _chunkSize = _fogManager.chunkSize;
             _tileSize = _fogManager.tileSize;
 
+            // TODO: (BUG: offset issue when tilesize != 1)
             // Compute grid size
             float gridSize = _chunkSize * _tileSize;
+
             InitDepthTexture(gridSize);
             InitFogTexture(gridSize);
-
-            // Set up material properties
-            UpdateMaterialProperties();
+            InitMaterialProperties(gridSize);
         }
 
         private void InitFogTexture(float gridSize) {
@@ -82,17 +82,19 @@ namespace FogOfWar
             _depthCamera.aspect = 1.0f;
         }
 
-        private void UpdateMaterialProperties()
+        private void InitMaterialProperties(float gridSize)
         {
             // Calculate world dimensions
-            Vector2 chunkSize = new Vector2(_chunkSize * _tileSize, _chunkSize * _tileSize);
+            Vector2 chunkSize = new Vector2(gridSize, gridSize);
             Vector3 worldOrigin = transform.position;
             worldOrigin.y = 0;
 
             // Update shader properties
             fogMaterial.SetVector("_ChunkSize", chunkSize);
             fogMaterial.SetVector("_WorldOrigin", worldOrigin);
+        }
 
+        private void UpdateMaterialProperties() {
             // Calculate and set view-projection inverse matrix
             Matrix4x4 viewMatrix = _depthCamera.worldToCameraMatrix;
             Matrix4x4 projectionMatrix = _depthCamera.projectionMatrix;
@@ -103,17 +105,7 @@ namespace FogOfWar
             fogMaterial.SetTexture("_FogTex", fogTexture);
         }
 
-        private void Update()
-        {
-            // Update material properties every frame to handle camera movement
-            UpdateMaterialProperties();
-
-            // Update fog texture
-            UpdateFogTexture();
-        }
-
-        void UpdateFogTexture()
-        {
+        void UpdateFogTexture() {
             int packedLen = _chunkSize * _chunkSize / 4;
             int[] lightMapData = new int[packedLen];
 
@@ -139,8 +131,12 @@ namespace FogOfWar
             fogComputeShader.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
         }
 
-        void OnDestroy()
-        {
+        private void Update() {
+            UpdateMaterialProperties();
+            UpdateFogTexture();
+        }
+
+        void OnDestroy() {
             _lightMapBuffer?.Release();
         }
     }

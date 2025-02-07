@@ -202,11 +202,12 @@ public class FogManager : MonoBehaviour
             for (int z = 0; z < chunkSize; z++) {
                 float height = lightMap[x, z].Height;
                 Vector3 position = new Vector3(
-                    (x - chunkSize / 2) * tileSize + 0.5f,
+                    (x - chunkSize / 2 + 0.5f) * tileSize,
                     height,
-                    (z - chunkSize / 2) * tileSize + 0.5f);
+                    (z - chunkSize / 2 + 0.5f) * tileSize
+                );
 
-                // Set the Gizmos color based on visibility
+                // Set the tile color based on visibility
                 if (lightMap[x, z].Visible) {
                     Gizmos.color = Color.clear;
                 } else if (lightMap[x, z].Seen) {
