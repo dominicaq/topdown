@@ -26,7 +26,7 @@ namespace FogOfWar
         private FogManager _fogManager;
         private Camera _depthCamera;
 
-        void Start() {
+        private void Start() {
             _fogManager = GetComponent<FogManager>();
             if (!_fogManager) {
                 Debug.LogError("FogManager component missing from GameObject.");
@@ -42,7 +42,7 @@ namespace FogOfWar
             _chunkSize = _fogManager.chunkSize;
             _tileSize = _fogManager.tileSize;
 
-            // Compute grid size
+            // Compute grid size (for upscaling / mapping)
             _gridSize = _chunkSize * _tileSize;
 
             InitDepthCamera();
@@ -54,6 +54,7 @@ namespace FogOfWar
             transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
             // Basic camera setup
+            _depthCamera.enabled = true;
             _depthCamera.orthographic = true;
             _depthCamera.orthographicSize = _gridSize * 0.5f;
             _depthCamera.aspect = 1.0f;
@@ -89,31 +90,39 @@ namespace FogOfWar
         }
 
         private void InitMaterialProperties() {
-            // Calculate world dimensions
             Vector4 gridSizeVec = new Vector4(_gridSize, _gridSize, 0, 0);
             Vector3 worldOrigin = transform.position;
             worldOrigin.y = 0;
-
-            // Update shader properties
             fogMaterial.SetVector("_GridSize", gridSizeVec);
             fogMaterial.SetVector("_WorldOrigin", worldOrigin);
         }
 
         private void UpdateMaterialProperties() {
-            if (_depthCamera == null || depthTexture == null) {
-                Debug.LogError("Fog Render: Depth camera or texture not initialized!");
+            // Get the main camera (the one doing the final post-process)
+            Camera mainCam = Camera.main;
+            if (mainCam == null) {
+                Debug.LogError("Main camera not found.");
                 return;
             }
 
-            // Calculate and set view-projection inverse matrix
-            Matrix4x4 viewMatrix = _depthCamera.worldToCameraMatrix;
-            Matrix4x4 projectionMatrix = _depthCamera.projectionMatrix;
-            Matrix4x4 viewProjectionMatrix = projectionMatrix * viewMatrix;
-            Matrix4x4 invViewProjMatrix = viewProjectionMatrix.inverse;
+            // Compute main camera's inverse view-projection matrix.
+            Matrix4x4 mainViewMatrix = mainCam.worldToCameraMatrix;
+            Matrix4x4 mainProjMatrix = GL.GetGPUProjectionMatrix(mainCam.projectionMatrix, false);
+            Matrix4x4 mainVP = mainProjMatrix * mainViewMatrix;
+            Matrix4x4 invMainVP = mainVP.inverse;
+            fogMaterial.SetMatrix("_InvViewProjMatrix", invMainVP);
 
-            // Update shader properties
-            fogMaterial.SetMatrix("_InvViewProjMatrix", invViewProjMatrix);
-            fogMaterial.SetTexture("_DepthTex", depthTexture);
+            // Compute the projector's view-projection matrix using the depth camera.
+            Matrix4x4 projectorViewMatrix = _depthCamera.worldToCameraMatrix;
+            Matrix4x4 projectorProjMatrix = GL.GetGPUProjectionMatrix(_depthCamera.projectionMatrix, false);
+            Matrix4x4 projectorVP = projectorProjMatrix * projectorViewMatrix;
+            fogMaterial.SetMatrix("_ProjectorVP", projectorVP);
+
+            // Instead of using the depth camera's depth texture, use the main camera's depth texture.
+            // Ensure that the main camera has DepthTextureMode.Depth enabled.
+            fogMaterial.SetTexture("_DepthTex", Shader.GetGlobalTexture("_CameraDepthTexture"));
+
+            // Set the computed fog texture.
             fogMaterial.SetTexture("_FogTex", fogTexture);
         }
 
@@ -148,7 +157,7 @@ namespace FogOfWar
             UpdateFogTexture();
         }
 
-        void OnDestroy() {
+        private void OnDestroy() {
             _lightMapBuffer?.Release();
         }
     }

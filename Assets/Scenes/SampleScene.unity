@@ -411,7 +411,7 @@ Transform:
   m_GameObject: {fileID: 963194225}
   serializedVersion: 2
   m_LocalRotation: {x: 0.38268343, y: 0, z: 0, w: 0.92387956}
-  m_LocalPosition: {x: 0, y: 40, z: -30}
+  m_LocalPosition: {x: 0, y: 40, z: -40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -586,7 +586,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tileSize: 1
   maxHeight: 32
-  chunkSize: 256
+  chunkSize: 32
   drawGrid: 1
 --- !u!114 &1140297686
 MonoBehaviour:
@@ -1156,9 +1156,9 @@ SceneRoots:
   m_Roots:
   - {fileID: 1356205484}
   - {fileID: 1140297684}
-  - {fileID: 1678791013}
   - {fileID: 963194228}
   - {fileID: 705507995}
+  - {fileID: 1678791013}
   - {fileID: 2063950554}
   - {fileID: 1437532046}
   - {fileID: 1054297346}

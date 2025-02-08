@@ -1,7 +1,7 @@
 using UnityEngine;
 
 namespace FogOfWar {
-    public class FogPostProcess : MonoBehaviour
+    public class FogPostProcessing : MonoBehaviour
     {
         public GameObject fogManagerObject;
         private Material _fogMaterial;
@@ -13,14 +13,16 @@ namespace FogOfWar {
             }
 
             _fogMaterial = renderer.fogMaterial;
+
         }
 
         private void OnRenderImage(RenderTexture source, RenderTexture destination) {
-            if (_fogMaterial != null) {
-                Graphics.Blit(source, destination, _fogMaterial);
-            } else {
-                Graphics.Blit(source, destination);
+            if (_fogMaterial == null) {
+                Debug.LogError("Requesting FogPostProcessing but no FogMaterial found!");
             }
+
+            _fogMaterial.SetTexture("_MainTex", source);
+            Graphics.Blit(source, destination, _fogMaterial);
         }
     }
 }
