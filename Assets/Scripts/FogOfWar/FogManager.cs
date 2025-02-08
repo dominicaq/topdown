@@ -41,7 +41,7 @@ public class FogManager : MonoBehaviour
         circularPosition = new Vector3(x, 0, z);
 
         ResetFog(0);
-        RevealFog(circularPosition, 20);
+        RevealFog(circularPosition, 50);
     }
 
     /*

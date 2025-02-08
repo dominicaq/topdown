@@ -4,8 +4,7 @@ RWTexture2D<float4> Result;
 StructuredBuffer<uint> LightMap;
 
 int _chunkSize;
-int upscaleFactor;
-int tileSize;
+int _upscaleTileSize;
 
 [numthreads(4, 8, 1)]
 void CSMain(uint2 id : SV_DispatchThreadID)
@@ -13,7 +12,6 @@ void CSMain(uint2 id : SV_DispatchThreadID)
     // Compute base tile index
     int tileX = id.x << 2;  // Each thread processes 4 tiles
     int tileY = id.y;
-    int upscaleTileSize = tileSize * upscaleFactor;
 
     // Compute packed index (each int stores 4 tiles)
     int packedIndex = (tileY * _chunkSize + tileX) >> 2;
@@ -44,12 +42,12 @@ void CSMain(uint2 id : SV_DispatchThreadID)
         }
 
         // Calculate base upscale position
-        int2 basePos = int2((tileX + i) * upscaleTileSize, tileY * upscaleTileSize);
+        int2 basePos = int2((tileX + i) * _upscaleTileSize, tileY * _upscaleTileSize);
 
         // Write upscale pixels
-        for (int ux = 0; ux < upscaleTileSize; ux++)
+        for (int ux = 0; ux < _upscaleTileSize; ux++)
         {
-            for (int uy = 0; uy < upscaleTileSize; uy++)
+            for (int uy = 0; uy < _upscaleTileSize; uy++)
             {
                 Result[basePos + int2(ux, uy)] = fogColor;
             }

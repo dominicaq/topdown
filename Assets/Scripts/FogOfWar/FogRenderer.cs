@@ -74,8 +74,8 @@ namespace FogOfWar
             // Create compute shader variables and buffer
             _lightMapBuffer = new ComputeBuffer(_chunkSize * _chunkSize / 4, sizeof(int));
             fogCompute.SetInt("_chunkSize", _chunkSize);
-            fogCompute.SetInt("upscaleFactor", upscaleFactor);
-            fogCompute.SetInt("tileSize", _tileSize);
+            int upscaleTileSize = _tileSize * upscaleFactor;
+            fogCompute.SetInt("_upscaleTileSize", upscaleTileSize);
 
             _kernelHandle = fogCompute.FindKernel("CSMain");
             fogCompute.SetTexture(_kernelHandle, "Result", fogTexture);
