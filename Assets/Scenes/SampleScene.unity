@@ -586,7 +586,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tileSize: 1
   maxHeight: 32
-  chunkSize: 32
+  chunkSize: 256
   drawGrid: 1
 --- !u!114 &1140297686
 MonoBehaviour:
@@ -612,7 +612,7 @@ Camera:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1140297682}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_ClearFlags: 3
   m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}

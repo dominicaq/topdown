@@ -15,7 +15,6 @@ namespace FogOfWar
 
         [Header("Texture Output")]
         public RenderTexture fogTexture;
-        public RenderTexture depthTexture;
 
         [Header("Dimensions")]
         private int _tileSize;
@@ -24,7 +23,7 @@ namespace FogOfWar
 
         [Header("Components")]
         private FogManager _fogManager;
-        private Camera _depthCamera;
+        private Camera _projector;
 
         private void Start() {
             _fogManager = GetComponent<FogManager>();
@@ -33,9 +32,9 @@ namespace FogOfWar
                 return;
             }
 
-            _depthCamera = GetComponent<Camera>();
-            if (!_depthCamera) {
-                Debug.LogError("Fog Renderer requires an orthographic depth camera.");
+            _projector = GetComponent<Camera>();
+            if (!_projector) {
+                Debug.LogError("Fog Renderer requires a camera.");
                 return;
             }
 
@@ -45,32 +44,25 @@ namespace FogOfWar
             // Compute grid size (for upscaling / mapping)
             _gridSize = _chunkSize * _tileSize;
 
-            InitDepthCamera();
+            InitProjectorCamera();
             InitFogTexture();
-            InitMaterialProperties();
         }
 
-        private void InitDepthCamera() {
+        private void InitProjectorCamera() {
             transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
             // Basic camera setup
-            _depthCamera.enabled = true;
-            _depthCamera.orthographic = true;
-            _depthCamera.orthographicSize = _gridSize * 0.5f;
-            _depthCamera.aspect = 1.0f;
-            _depthCamera.nearClipPlane = 0.3f;
-            _depthCamera.farClipPlane = 100f;
+            _projector.enabled = true;
+            _projector.orthographic = true;
+            _projector.orthographicSize = _gridSize * 0.5f;
+            _projector.aspect = 1.0f;
+            _projector.nearClipPlane = 0.3f;
+            _projector.farClipPlane = 100f;
 
-            // Depth texture setup
-            _depthCamera.clearFlags = CameraClearFlags.SolidColor;
-            _depthCamera.backgroundColor = Color.black;
-            _depthCamera.depthTextureMode = DepthTextureMode.Depth;
-
-            // Create and assign depth texture
-            int textureSize = Mathf.RoundToInt(_gridSize);
-            depthTexture = new RenderTexture(textureSize, textureSize, 24, RenderTextureFormat.Depth);
-            depthTexture.Create();
-            _depthCamera.targetTexture = depthTexture;
+            // Prevent rendering t/he projector camera by creating a dummy target texture
+            _projector.targetTexture = new RenderTexture(1, 1, 0);
+            _projector.cullingMask = 0;
+            _projector.clearFlags = CameraClearFlags.Nothing;
         }
 
         private void InitFogTexture() {
@@ -89,14 +81,6 @@ namespace FogOfWar
             fogCompute.SetTexture(_kernelHandle, "Result", fogTexture);
         }
 
-        private void InitMaterialProperties() {
-            Vector4 gridSizeVec = new Vector4(_gridSize, _gridSize, 0, 0);
-            Vector3 worldOrigin = transform.position;
-            worldOrigin.y = 0;
-            fogMaterial.SetVector("_GridSize", gridSizeVec);
-            fogMaterial.SetVector("_WorldOrigin", worldOrigin);
-        }
-
         private void UpdateMaterialProperties() {
             // Get the main camera (the one doing the final post-process)
             Camera mainCam = Camera.main;
@@ -113,16 +97,13 @@ namespace FogOfWar
             fogMaterial.SetMatrix("_InvViewProjMatrix", invMainVP);
 
             // Compute the projector's view-projection matrix using the depth camera.
-            Matrix4x4 projectorViewMatrix = _depthCamera.worldToCameraMatrix;
-            Matrix4x4 projectorProjMatrix = GL.GetGPUProjectionMatrix(_depthCamera.projectionMatrix, false);
+            Matrix4x4 projectorViewMatrix = _projector.worldToCameraMatrix;
+            Matrix4x4 projectorProjMatrix = GL.GetGPUProjectionMatrix(_projector.projectionMatrix, false);
             Matrix4x4 projectorVP = projectorProjMatrix * projectorViewMatrix;
             fogMaterial.SetMatrix("_ProjectorVP", projectorVP);
 
-            // Instead of using the depth camera's depth texture, use the main camera's depth texture.
-            // Ensure that the main camera has DepthTextureMode.Depth enabled.
+            // Get main cameras depth texture
             fogMaterial.SetTexture("_DepthTex", Shader.GetGlobalTexture("_CameraDepthTexture"));
-
-            // Set the computed fog texture.
             fogMaterial.SetTexture("_FogTex", fogTexture);
         }
 
@@ -130,8 +111,8 @@ namespace FogOfWar
             int packedLen = _chunkSize * _chunkSize / 4;
             int[] lightMapData = new int[packedLen];
 
-            for (int i = 0; i < packedLen; i++)
-            {
+            // Pack 4 bytes into a single int
+            for (int i = 0; i < packedLen; i++) {
                 int baseIndex = i * 4;
                 int x = baseIndex % _chunkSize;
                 int y = baseIndex / _chunkSize;

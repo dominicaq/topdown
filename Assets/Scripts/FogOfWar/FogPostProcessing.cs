@@ -6,7 +6,11 @@ namespace FogOfWar {
         public GameObject fogManagerObject;
         private Material _fogMaterial;
 
-        void Start() {
+        private void Start() {
+            if (fogManagerObject == null) {
+                Debug.LogError("FogPostProcessing requires fogManager GameObject.");
+            }
+
             FogRenderer renderer = fogManagerObject.GetComponent<FogRenderer>();
             if (renderer == null) {
                 Debug.LogError("FogRenderer component not found on the assigned GameObject.");

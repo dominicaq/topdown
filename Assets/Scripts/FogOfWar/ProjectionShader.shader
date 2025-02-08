@@ -5,8 +5,6 @@ Shader "FogOfWar/ProjectedFog"
         _MainTex ("Source Texture", 2D) = "white" {}
         _FogTex ("Fog Texture", 2D) = "white" {}
         _DepthTex ("Depth Texture", 2D) = "white" {}
-        _WorldOrigin ("World Origin", Vector) = (0, 0, 0, 0)
-        _GridSize ("Grid Size", Vector) = (10, 10, 0, 0)
     }
 
     SubShader
@@ -42,9 +40,9 @@ Shader "FogOfWar/ProjectedFog"
 
             // Fog data
             sampler2D _FogTex;
+
+            // Projection data
             sampler2D _DepthTex;
-            float4 _WorldOrigin;
-            float4 _GridSize;
             float4x4 _InvViewProjMatrix;
             float4x4 _ProjectorVP;
 
