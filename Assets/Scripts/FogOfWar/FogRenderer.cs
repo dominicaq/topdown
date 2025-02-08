@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.Rendering;
 
 namespace FogOfWar
 {
@@ -9,103 +8,116 @@ namespace FogOfWar
         public int upscaleFactor = 4;
         public Material fogMaterial;
 
-        [Header("Compute Shader In/Out")]
-        public ComputeShader fogComputeShader;
-        public RenderTexture fogTexture;
-        public RenderTexture depthTexture;
+        [Header("Compute Shader")]
+        public ComputeShader fogCompute;
         private int _kernelHandle;
         private ComputeBuffer _lightMapBuffer;
+
+        [Header("Texture Output")]
+        public RenderTexture fogTexture;
+        public RenderTexture depthTexture;
 
         [Header("Dimensions")]
         private int _tileSize;
         private int _chunkSize;
+        private float _gridSize;
 
         [Header("Components")]
         private FogManager _fogManager;
         private Camera _depthCamera;
 
-        void Start()
-        {
+        void Start() {
             _fogManager = GetComponent<FogManager>();
             if (!_fogManager) {
                 Debug.LogError("FogManager component missing from GameObject.");
                 return;
             }
 
+            _depthCamera = GetComponent<Camera>();
+            if (!_depthCamera) {
+                Debug.LogError("Fog Renderer requires an orthographic depth camera.");
+                return;
+            }
+
             _chunkSize = _fogManager.chunkSize;
             _tileSize = _fogManager.tileSize;
 
-            // TODO: (BUG: offset issue when tilesize != 1)
             // Compute grid size
-            float gridSize = _chunkSize * _tileSize;
+            _gridSize = _chunkSize * _tileSize;
 
-            InitDepthTexture(gridSize);
-            InitFogTexture(gridSize);
-            InitMaterialProperties(gridSize);
+            InitDepthCamera();
+            InitFogTexture();
+            InitMaterialProperties();
         }
 
-        private void InitFogTexture(float gridSize) {
-            int textureSize = Mathf.RoundToInt(gridSize);
+        private void InitDepthCamera() {
+            transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+            // Basic camera setup
+            _depthCamera.orthographic = true;
+            _depthCamera.orthographicSize = _gridSize * 0.5f;
+            _depthCamera.aspect = 1.0f;
+            _depthCamera.nearClipPlane = 0.3f;
+            _depthCamera.farClipPlane = 100f;
+
+            // Depth texture setup
+            _depthCamera.clearFlags = CameraClearFlags.SolidColor;
+            _depthCamera.backgroundColor = Color.black;
+            _depthCamera.depthTextureMode = DepthTextureMode.Depth;
+
+            // Create and assign depth texture
+            int textureSize = Mathf.RoundToInt(_gridSize);
+            depthTexture = new RenderTexture(textureSize, textureSize, 24, RenderTextureFormat.Depth);
+            depthTexture.Create();
+            _depthCamera.targetTexture = depthTexture;
+        }
+
+        private void InitFogTexture() {
+            int textureSize = Mathf.RoundToInt(_gridSize);
             fogTexture = new RenderTexture(textureSize, textureSize, 0, RenderTextureFormat.ARGB32);
             fogTexture.enableRandomWrite = true;
             fogTexture.Create();
 
             // Create compute shader variables and buffer
             _lightMapBuffer = new ComputeBuffer(_chunkSize * _chunkSize / 4, sizeof(int));
-            fogComputeShader.SetInt("_chunkSize", _chunkSize);
-            fogComputeShader.SetInt("upscaleFactor", upscaleFactor);
-            fogComputeShader.SetInt("tileSize", _tileSize);
+            fogCompute.SetInt("_chunkSize", _chunkSize);
+            fogCompute.SetInt("upscaleFactor", upscaleFactor);
+            fogCompute.SetInt("tileSize", _tileSize);
 
-            _kernelHandle = fogComputeShader.FindKernel("CSMain");
-            fogComputeShader.SetTexture(_kernelHandle, "Result", fogTexture);
+            _kernelHandle = fogCompute.FindKernel("CSMain");
+            fogCompute.SetTexture(_kernelHandle, "Result", fogTexture);
         }
 
-        private void InitDepthTexture(float gridSize) {
-            _depthCamera = GetComponent<Camera>();
-            if (!_depthCamera) {
-                Debug.LogWarning("Fog Renderer requires an orthographic depth camera.");
-                return;
-            }
-
-            // Enable depth texture for world position reconstruction
-            _depthCamera.clearFlags = CameraClearFlags.SolidColor;
-            _depthCamera.backgroundColor = Color.black;
-            _depthCamera.depthTextureMode = DepthTextureMode.Depth;
-
-            // Ensure the RenderTexture resolution matches the grid exactly
-            int textureSize = Mathf.RoundToInt(gridSize);
-            depthTexture = new RenderTexture(textureSize, textureSize, 24, RenderTextureFormat.Depth);
-            _depthCamera.targetTexture = depthTexture;
-
-            // Correct orthographic size
-            _depthCamera.orthographicSize = gridSize * 0.5f;
-            _depthCamera.aspect = 1.0f;
-        }
-
-        private void InitMaterialProperties(float gridSize)
-        {
+        private void InitMaterialProperties() {
             // Calculate world dimensions
-            Vector2 chunkSize = new Vector2(gridSize, gridSize);
+            Vector4 gridSizeVec = new Vector4(_gridSize, _gridSize, 0, 0);
             Vector3 worldOrigin = transform.position;
             worldOrigin.y = 0;
 
             // Update shader properties
-            fogMaterial.SetVector("_ChunkSize", chunkSize);
+            fogMaterial.SetVector("_GridSize", gridSizeVec);
             fogMaterial.SetVector("_WorldOrigin", worldOrigin);
         }
 
         private void UpdateMaterialProperties() {
+            if (_depthCamera == null || depthTexture == null) {
+                Debug.LogError("Fog Render: Depth camera or texture not initialized!");
+                return;
+            }
+
             // Calculate and set view-projection inverse matrix
             Matrix4x4 viewMatrix = _depthCamera.worldToCameraMatrix;
             Matrix4x4 projectionMatrix = _depthCamera.projectionMatrix;
             Matrix4x4 viewProjectionMatrix = projectionMatrix * viewMatrix;
+            Matrix4x4 invViewProjMatrix = viewProjectionMatrix.inverse;
 
-            fogMaterial.SetMatrix("unity_MatrixInvVP", viewProjectionMatrix.inverse);
+            // Update shader properties
+            fogMaterial.SetMatrix("_InvViewProjMatrix", invViewProjMatrix);
             fogMaterial.SetTexture("_DepthTex", depthTexture);
             fogMaterial.SetTexture("_FogTex", fogTexture);
         }
 
-        void UpdateFogTexture() {
+        private void UpdateFogTexture() {
             int packedLen = _chunkSize * _chunkSize / 4;
             int[] lightMapData = new int[packedLen];
 
@@ -124,11 +136,11 @@ namespace FogOfWar
             }
 
             _lightMapBuffer.SetData(lightMapData);
-            fogComputeShader.SetBuffer(_kernelHandle, "LightMap", _lightMapBuffer);
+            fogCompute.SetBuffer(_kernelHandle, "LightMap", _lightMapBuffer);
 
             int threadGroupsX = Mathf.CeilToInt(fogTexture.width / 8.0f);
             int threadGroupsY = Mathf.CeilToInt(fogTexture.height / 8.0f);
-            fogComputeShader.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
+            fogCompute.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
         }
 
         private void Update() {

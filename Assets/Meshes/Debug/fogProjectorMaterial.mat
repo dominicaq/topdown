@@ -118,10 +118,12 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _CameraFadeParams: {r: 0, g: Infinity, b: 0, a: 0}
+    - _ChunkSize: {r: 128, g: 128, b: 0, a: 0}
     - _Color: {r: 0.5188679, g: 0.5188679, b: 0.5188679, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _GridSize: {r: 256, g: 256, b: 0, a: 0}
     - _SoftParticleFadeParams: {r: 0, g: 0, b: 0, a: 0}
-    - _WorldOrigin: {r: 0, g: 29.99997, b: 0, a: 0}
+    - _WorldOrigin: {r: 0, g: 0, b: 0, a: 0}
     - _WorldSize: {r: 64, g: 64, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

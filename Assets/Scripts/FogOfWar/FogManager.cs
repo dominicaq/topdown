@@ -70,9 +70,10 @@ public class FogManager : MonoBehaviour
                 // Note: I noticed the grid positon was off center by -0.5f so I added 0.5f to x and z
                 // Perform a raycast from the tile's center downwards to create a discrete heightmap
                 Vector3 tileCenter = new Vector3(
-                    (globalX - chunkSize / 2) * tileSize + 0.5f,
+                    (globalX - chunkSize / 2 + 0.5f) * tileSize,
                     100f,
-                    (globalZ - chunkSize / 2) * tileSize + 0.5f);
+                    (globalZ - chunkSize / 2 + 0.5f) * tileSize
+                );
                 if (Physics.Raycast(tileCenter, Vector3.down, out RaycastHit hit)) {
                     int height = Mathf.Clamp((int)Mathf.Floor(hit.point.y), 0, maxHeight);
                     tileHeight = (byte)height;
@@ -151,8 +152,9 @@ public class FogManager : MonoBehaviour
                 int ty = origin.y + dy;
 
                 int distSquared = dx * dx + dy * dy;
-                if (!IsInBounds(tx, ty) || (distSquared > radius * radius))
+                if (!IsInBounds(tx, ty) || (distSquared > radius * radius)) {
                     continue;
+                }
 
                 lightMap[tx, ty].Visible = true;
                 lightMap[tx, ty].Seen = true;
