@@ -4,17 +4,21 @@ namespace FogOfWar
 {
     public class FogRenderer : MonoBehaviour
     {
-        [Header("Properties")]
-        public int upscaleFactor = 4;
+        [Header("Shader & Materials")]
         public Material fogMaterial;
-
-        [Header("Compute Shader")]
         public ComputeShader fogCompute;
-        private int _kernelHandle;
+
+        [Header("Fog Settings")]
+        public int upscaleFactor = 4;
+
+        [Header("Compute Shader Buffers")]
         private ComputeBuffer _lightMapBuffer;
+        private int _kernelMain;
+        private int _kernelUpscale;
 
         [Header("Texture Output")]
-        public RenderTexture fogTexture;
+        public RenderTexture _fogTexture;
+        private RenderTexture _baseTexture; // Added: Base resolution texture
 
         [Header("Dimensions")]
         private int _tileSize;
@@ -26,6 +30,18 @@ namespace FogOfWar
         private Camera _projector;
 
         private void Start() {
+            InitComponents();
+            InitProjectorCamera();
+            InitFogTextures();
+            InitComputeShader();
+        }
+
+        private void Update() {
+            UpdateFogTexture();
+            UpdateMaterialProperties();
+        }
+
+        private void InitComponents() {
             _fogManager = GetComponent<FogManager>();
             if (!_fogManager) {
                 Debug.LogError("FogManager component missing from GameObject.");
@@ -34,24 +50,17 @@ namespace FogOfWar
 
             _projector = GetComponent<Camera>();
             if (!_projector) {
-                Debug.LogError("Fog Renderer requires a camera.");
+                Debug.LogError("FogRenderer requires a Camera component.");
                 return;
             }
 
             _chunkSize = _fogManager.chunkSize;
             _tileSize = _fogManager.tileSize;
-
-            // Compute grid size (for upscaling / mapping)
             _gridSize = _chunkSize * _tileSize;
-
-            InitProjectorCamera();
-            InitFogTexture();
         }
 
         private void InitProjectorCamera() {
             transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-
-            // Basic camera setup
             _projector.enabled = true;
             _projector.orthographic = true;
             _projector.orthographicSize = _gridSize * 0.5f;
@@ -59,60 +68,65 @@ namespace FogOfWar
             _projector.nearClipPlane = 0.3f;
             _projector.farClipPlane = 100f;
 
-            // Prevent rendering t/he projector camera by creating a dummy target texture
             _projector.targetTexture = new RenderTexture(1, 1, 0);
             _projector.cullingMask = 0;
             _projector.clearFlags = CameraClearFlags.Nothing;
         }
 
-        private void InitFogTexture() {
-            int textureSize = Mathf.RoundToInt(_gridSize);
-            fogTexture = new RenderTexture(textureSize, textureSize, 0, RenderTextureFormat.ARGB32);
-            fogTexture.enableRandomWrite = true;
-            fogTexture.Create();
+        private void InitFogTextures() {
+            int baseSize = Mathf.RoundToInt(_gridSize);
+            int upscaleSize = baseSize * upscaleFactor;
 
-            // Create compute shader variables and buffer
-            _lightMapBuffer = new ComputeBuffer(_chunkSize * _chunkSize / 4, sizeof(int));
-            fogCompute.SetInt("_chunkSize", _chunkSize);
-            int upscaleTileSize = _tileSize * upscaleFactor;
-            fogCompute.SetInt("_upscaleTileSize", upscaleTileSize);
+            // Create base resolution texture
+            _baseTexture = new RenderTexture(baseSize, baseSize, 0, RenderTextureFormat.ARGB32);
+            _baseTexture.enableRandomWrite = true;
+            _baseTexture.Create();
 
-            _kernelHandle = fogCompute.FindKernel("CSMain");
-            fogCompute.SetTexture(_kernelHandle, "Result", fogTexture);
+            // Create upscaled texture
+            _fogTexture = new RenderTexture(upscaleSize, upscaleSize, 0, RenderTextureFormat.ARGB32);
+            _fogTexture.enableRandomWrite = true;
+            _fogTexture.Create();
         }
 
-        private void UpdateMaterialProperties() {
-            // Get the main camera (the one doing the final post-process)
+        private void InitComputeShader() {
+            _lightMapBuffer = new ComputeBuffer(_chunkSize * _chunkSize / 4, sizeof(int));
+
+            _kernelMain = fogCompute.FindKernel("CSMain");
+            _kernelUpscale = fogCompute.FindKernel("UpscaleFogTexture");
+
+            fogCompute.SetInt("_chunkSize", _chunkSize);
+            fogCompute.SetTexture(_kernelMain, "FogTex", _baseTexture);
+            fogCompute.SetTexture(_kernelUpscale, "InputTex", _baseTexture);
+            fogCompute.SetTexture(_kernelUpscale, "OutputTex", _fogTexture);
+
+            int upscaleSize = _chunkSize * upscaleFactor;
+            fogCompute.SetInts("_upscaleSize", upscaleSize, upscaleSize);
+            fogCompute.SetFloats("_scaleFactor", upscaleFactor, upscaleFactor);
+        }
+
+        private void UpdateMaterialProperties()
+        {
             Camera mainCam = Camera.main;
-            if (mainCam == null) {
-                Debug.LogError("Main camera not found.");
-                return;
-            }
+            if (!mainCam) return;
 
-            // Compute main camera's inverse view-projection matrix.
-            Matrix4x4 mainViewMatrix = mainCam.worldToCameraMatrix;
-            Matrix4x4 mainProjMatrix = GL.GetGPUProjectionMatrix(mainCam.projectionMatrix, false);
-            Matrix4x4 mainVP = mainProjMatrix * mainViewMatrix;
-            Matrix4x4 invMainVP = mainVP.inverse;
-            fogMaterial.SetMatrix("_InvViewProjMatrix", invMainVP);
+            Matrix4x4 mainVP = GL.GetGPUProjectionMatrix(mainCam.projectionMatrix, false) * mainCam.worldToCameraMatrix;
+            fogMaterial.SetMatrix("_InvViewProjMatrix", mainVP.inverse);
 
-            // Compute the projector's view-projection matrix using the depth camera.
-            Matrix4x4 projectorViewMatrix = _projector.worldToCameraMatrix;
-            Matrix4x4 projectorProjMatrix = GL.GetGPUProjectionMatrix(_projector.projectionMatrix, false);
-            Matrix4x4 projectorVP = projectorProjMatrix * projectorViewMatrix;
+            Matrix4x4 projectorVP = GL.GetGPUProjectionMatrix(_projector.projectionMatrix, false) * _projector.worldToCameraMatrix;
             fogMaterial.SetMatrix("_ProjectorVP", projectorVP);
 
-            // Get main cameras depth texture
             fogMaterial.SetTexture("_DepthTex", Shader.GetGlobalTexture("_CameraDepthTexture"));
-            fogMaterial.SetTexture("_FogTex", fogTexture);
+            fogMaterial.SetTexture("_FogTex", _fogTexture);
         }
 
-        private void UpdateFogTexture() {
+        private void UpdateFogTexture()
+        {
+            // Previous implementation remains the same for updating light map data
             int packedLen = _chunkSize * _chunkSize / 4;
             int[] lightMapData = new int[packedLen];
 
-            // Pack 4 bytes into a single int
-            for (int i = 0; i < packedLen; i++) {
+            for (int i = 0; i < packedLen; i++)
+            {
                 int baseIndex = i * 4;
                 int x = baseIndex % _chunkSize;
                 int y = baseIndex / _chunkSize;
@@ -126,20 +140,29 @@ namespace FogOfWar
             }
 
             _lightMapBuffer.SetData(lightMapData);
-            fogCompute.SetBuffer(_kernelHandle, "LightMap", _lightMapBuffer);
+            fogCompute.SetBuffer(_kernelMain, "LightMap", _lightMapBuffer);
 
-            int threadGroupsX = Mathf.CeilToInt(fogTexture.width / 8.0f);
-            int threadGroupsY = Mathf.CeilToInt(fogTexture.height / 8.0f);
-            fogCompute.Dispatch(_kernelHandle, threadGroupsX, threadGroupsY, 1);
-        }
+            // Dispatch main kernel to write to base texture
+            int threadGroupsX = Mathf.CeilToInt(_baseTexture.width / 8.0f);
+            int threadGroupsY = Mathf.CeilToInt(_baseTexture.height / 8.0f);
+            fogCompute.Dispatch(_kernelMain, threadGroupsX, threadGroupsY, 1);
 
-        private void Update() {
-            UpdateMaterialProperties();
-            UpdateFogTexture();
+            // Dispatch upscale kernel to write to final texture
+            int upscaleThreadsX = Mathf.CeilToInt(_fogTexture.width / 8.0f);
+            int upscaleThreadsY = Mathf.CeilToInt(_fogTexture.height / 8.0f);
+            fogCompute.Dispatch(_kernelUpscale, upscaleThreadsX, upscaleThreadsY, 1);
         }
 
         private void OnDestroy() {
             _lightMapBuffer?.Release();
+            if (_baseTexture != null) {
+                _baseTexture.Release();
+                _baseTexture = null;
+            }
+            if (_fogTexture != null) {
+                _fogTexture.Release();
+                _fogTexture = null;
+            }
         }
     }
 }

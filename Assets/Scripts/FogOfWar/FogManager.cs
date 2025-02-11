@@ -21,6 +21,14 @@ public class FogManager : MonoBehaviour
     private float angle = 0.0f;
     private Vector3 circularPosition;
 
+    [Header("Misc")]
+    private int[,] _transforms = {
+        { 0,  1,  1,  0 },  // North
+        { 0, -1, -1,  0 },  // South
+        { -1,  0,  0, -1 }, // West
+        { 1,  0,  0,  1 }   // East
+    };
+
     void Start() {
         // Initialize the grid of TileData
         lightMap = new TileData[chunkSize, chunkSize];
@@ -125,18 +133,10 @@ public class FogManager : MonoBehaviour
         Stack<(int, float, float)> rows = new Stack<(int, float, float)>();
         rows.Push((1, -1f, 1f)); // Start row (depth = 1, slopes = [-1, 1])
 
-        // Transformation matrix
-        int[,] transforms = {
-            { 0,  1,  1,  0 },  // North
-            { 0, -1, -1,  0 },  // South
-            { -1,  0,  0, -1 }, // West
-            { 1,  0,  0,  1 }   // East
-        };
-
-        int xx = transforms[quadrant, 0];
-        int xy = transforms[quadrant, 1];
-        int yx = transforms[quadrant, 2];
-        int yy = transforms[quadrant, 3];
+        int xx = _transforms[quadrant, 0];
+        int xy = _transforms[quadrant, 1];
+        int yx = _transforms[quadrant, 2];
+        int yy = _transforms[quadrant, 3];
 
         while (rows.Count > 0) {
             var (depth, startSlope, endSlope) = rows.Pop();

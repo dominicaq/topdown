@@ -1,56 +1,82 @@
 #pragma kernel CSMain
+#pragma kernel UpscaleFogTexture
 
-RWTexture2D<float4> Result;
+// Main kernel textures and buffers
+RWTexture2D<float4> FogTex;
 StructuredBuffer<uint> LightMap;
 
+// Upscale kernel textures
+Texture2D<float4> InputTex;
+RWTexture2D<float4> OutputTex;
+
+// Shared parameters
 int _chunkSize;
-int _upscaleTileSize;
+uint2 _upscaleSize;
+float2 _scaleFactor;
 
 [numthreads(4, 8, 1)]
 void CSMain(uint2 id : SV_DispatchThreadID)
 {
-    // Compute base tile index
-    int tileX = id.x << 2;  // Each thread processes 4 tiles
-    int tileY = id.y;
+    // Base resolution fog generation - unchanged
+    uint tileX = id.x << 2;
+    uint tileY = id.y;
 
-    // Compute packed index (each int stores 4 tiles)
     int packedIndex = (tileY * _chunkSize + tileX) >> 2;
-
-    // Read packed tile data (4 tiles per uint)
     uint packedData = LightMap[packedIndex];
 
-    // Process each tile within the packed int
     for (int i = 0; i < 4; i++)
     {
         int byteOffset = i << 3;
         uint tileByte = (packedData >> byteOffset) & 0xFF;
 
-        // Calculate fog color based on visibility flags
-        // tileByte & 0x80 is the visible flag
-        // tileByte & 0x40 is the gray/partially visible flag
         float4 fogColor;
-
         if ((tileByte & 0x80) != 0) {
-            // Fully visible - completely transparent
             fogColor = float4(0, 0, 0, 0);
         } else if ((tileByte & 0x40) != 0) {
-            // Partially visible - semi-transparent gray
             fogColor = float4(0, 0, 0, 0.7);
         } else {
-            // Unseen - solid black
             fogColor = float4(0, 0, 0, 1);
         }
 
-        // Calculate base upscale position
-        int2 basePos = int2((tileX + i) * _upscaleTileSize, tileY * _upscaleTileSize);
-
-        // Write upscale pixels
-        for (int ux = 0; ux < _upscaleTileSize; ux++)
-        {
-            for (int uy = 0; uy < _upscaleTileSize; uy++)
-            {
-                Result[basePos + int2(ux, uy)] = fogColor;
-            }
-        }
+        int2 basePos = int2((tileX + i), tileY);
+        FogTex[basePos] = fogColor;
     }
+}
+
+// Helper function for smooth interpolation
+float4 SampleBilinear(float2 uv, int2 texSize)
+{
+    float2 pixel = uv * texSize - 0.5f;
+    int2 baseCoord = int2(floor(pixel));
+    float2 fract = pixel - baseCoord;
+
+    // Ensure we don't sample outside texture bounds
+    baseCoord = clamp(baseCoord, 0, texSize - 2);
+
+    float4 c00 = InputTex[baseCoord];
+    float4 c10 = InputTex[baseCoord + int2(1, 0)];
+    float4 c01 = InputTex[baseCoord + int2(0, 1)];
+    float4 c11 = InputTex[baseCoord + int2(1, 1)];
+
+    return lerp(
+        lerp(c00, c10, fract.x),
+        lerp(c01, c11, fract.x),
+        fract.y
+    );
+}
+
+[numthreads(8, 8, 1)]
+void UpscaleFogTexture(uint2 id : SV_DispatchThreadID)
+{
+    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+        return;
+
+    // Convert output coordinate to input UV
+    float2 uv = float2(id) / _upscaleSize;
+
+    // Sample with bilinear filtering
+    float4 upscaled = SampleBilinear(uv, int2(_chunkSize, _chunkSize));
+
+    // Write to output
+    OutputTex[id] = upscaled;
 }
