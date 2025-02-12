@@ -1,82 +1,100 @@
 #pragma kernel CSMain
-#pragma kernel UpscaleFogTexture
+#pragma kernel UpscaleFog
+#pragma kernel HorizontalBlur
+#pragma kernel VerticalBlur
 
-// Main kernel textures and buffers
+// Textures and buffers
 RWTexture2D<float4> FogTex;
 StructuredBuffer<uint> LightMap;
-
-// Upscale kernel textures
 Texture2D<float4> InputTex;
 RWTexture2D<float4> OutputTex;
+RWTexture2D<float4> BlurTemp;
 
-// Shared parameters
+// Parameters
 int _chunkSize;
 uint2 _upscaleSize;
 float2 _scaleFactor;
+float _blurStrength;
 
-[numthreads(4, 8, 1)]
+// Optimized CSMain with larger thread groups
+[numthreads(8, 8, 1)]
 void CSMain(uint2 id : SV_DispatchThreadID)
 {
-    // Base resolution fog generation - unchanged
-    uint tileX = id.x << 2;
+    if (id.x >= (uint)_chunkSize || id.y >= (uint)_chunkSize)
+        return;
+
+    // Process 4 tiles at once using bit operations
+    uint tileX = id.x;
     uint tileY = id.y;
-
     int packedIndex = (tileY * _chunkSize + tileX) >> 2;
-    uint packedData = LightMap[packedIndex];
+    uint shift = (tileX & 3) << 3;
+    uint tileByte = (LightMap[packedIndex] >> shift) & 0xFF;
 
-    for (int i = 0; i < 4; i++)
-    {
-        int byteOffset = i << 3;
-        uint tileByte = (packedData >> byteOffset) & 0xFF;
-
-        float4 fogColor;
-        if ((tileByte & 0x80) != 0) {
-            fogColor = float4(0, 0, 0, 0);
-        } else if ((tileByte & 0x40) != 0) {
-            fogColor = float4(0, 0, 0, 0.7);
-        } else {
-            fogColor = float4(0, 0, 0, 1);
-        }
-
-        int2 basePos = int2((tileX + i), tileY);
-        FogTex[basePos] = fogColor;
-    }
+    // Fast branching using bit operations
+    float alpha = (tileByte >> 7) ? 0.0 : ((tileByte >> 6) & 1) ? 0.7 : 1.0;
+    FogTex[id] = float4(0, 0, 0, alpha);
 }
 
-// Helper function for smooth interpolation
-float4 SampleBilinear(float2 uv, int2 texSize)
-{
-    float2 pixel = uv * texSize - 0.5f;
-    int2 baseCoord = int2(floor(pixel));
-    float2 fract = pixel - baseCoord;
-
-    // Ensure we don't sample outside texture bounds
-    baseCoord = clamp(baseCoord, 0, texSize - 2);
-
-    float4 c00 = InputTex[baseCoord];
-    float4 c10 = InputTex[baseCoord + int2(1, 0)];
-    float4 c01 = InputTex[baseCoord + int2(0, 1)];
-    float4 c11 = InputTex[baseCoord + int2(1, 1)];
-
-    return lerp(
-        lerp(c00, c10, fract.x),
-        lerp(c01, c11, fract.x),
-        fract.y
-    );
-}
-
-[numthreads(8, 8, 1)]
-void UpscaleFogTexture(uint2 id : SV_DispatchThreadID)
+// Fast nearest-neighbor upscale with minimal texture fetches
+[numthreads(16, 16, 1)]
+void UpscaleFog(uint2 id : SV_DispatchThreadID)
 {
     if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
         return;
 
-    // Convert output coordinate to input UV
-    float2 uv = float2(id) / _upscaleSize;
+    // Simple and fast upscale calculation
+    uint2 sourcePos = uint2(id.x / _scaleFactor.x, id.y / _scaleFactor.y);
+    float4 color = InputTex[sourcePos];
 
-    // Sample with bilinear filtering
-    float4 upscaled = SampleBilinear(uv, int2(_chunkSize, _chunkSize));
+    OutputTex[id] = color;
+}
 
-    // Write to output
-    OutputTex[id] = upscaled;
+// Separable Gaussian blur - horizontal pass
+[numthreads(256, 1, 1)]
+void HorizontalBlur(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+        return;
+
+    // Fast 5-tap blur
+    float weights[3] = { 0.4026, 0.2442, 0.0545 };
+
+    float4 color = OutputTex[uint2(id.x, id.y)] * weights[0];
+
+    [unroll]
+    for (int i = 1; i < 3; i++)
+    {
+        uint x1 = min(id.x + i, _upscaleSize.x - 1);
+        uint x2 = max(int(id.x) - i, 0);
+
+        color += OutputTex[uint2(x1, id.y)] * weights[i];
+        color += OutputTex[uint2(x2, id.y)] * weights[i];
+    }
+
+    BlurTemp[id.xy] = color;
+}
+
+// Separable Gaussian blur - vertical pass
+[numthreads(1, 256, 1)]
+void VerticalBlur(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+        return;
+
+    // Fast 5-tap blur
+    float weights[3] = { 0.4026, 0.2442, 0.0545 };
+
+    float4 color = BlurTemp[uint2(id.x, id.y)] * weights[0];
+
+    [unroll]
+    for (int i = 1; i < 3; i++)
+    {
+        uint y1 = min(id.y + i, _upscaleSize.y - 1);
+        uint y2 = max(int(id.y) - i, 0);
+
+        color += BlurTemp[uint2(id.x, y1)] * weights[i];
+        color += BlurTemp[uint2(id.x, y2)] * weights[i];
+    }
+
+    OutputTex[id.xy] = color;
 }

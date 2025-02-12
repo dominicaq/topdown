@@ -10,15 +10,19 @@ namespace FogOfWar
 
         [Header("Fog Settings")]
         public int upscaleFactor = 4;
+        public float blurStrength = 1.0f;
 
         [Header("Compute Shader Buffers")]
         private ComputeBuffer _lightMapBuffer;
         private int _kernelMain;
         private int _kernelUpscale;
+        private int _kernelHorizontalBlur;
+        private int _kernelVerticalBlur;
 
         [Header("Texture Output")]
         public RenderTexture _fogTexture;
-        private RenderTexture _baseTexture; // Added: Base resolution texture
+        private RenderTexture _baseTexture; // Original low res texture
+        private RenderTexture _blurTemp; // Temporary texture for blur pass
 
         [Header("Dimensions")]
         private int _tileSize;
@@ -86,22 +90,36 @@ namespace FogOfWar
             _fogTexture = new RenderTexture(upscaleSize, upscaleSize, 0, RenderTextureFormat.ARGB32);
             _fogTexture.enableRandomWrite = true;
             _fogTexture.Create();
+
+            // Create blur temporary texture
+            _blurTemp = new RenderTexture(upscaleSize, upscaleSize, 0, RenderTextureFormat.ARGB32);
+            _blurTemp.enableRandomWrite = true;
+            _blurTemp.Create();
         }
 
         private void InitComputeShader() {
             _lightMapBuffer = new ComputeBuffer(_chunkSize * _chunkSize / 4, sizeof(int));
 
             _kernelMain = fogCompute.FindKernel("CSMain");
-            _kernelUpscale = fogCompute.FindKernel("UpscaleFogTexture");
+            _kernelUpscale = fogCompute.FindKernel("UpscaleFog");
+            _kernelHorizontalBlur = fogCompute.FindKernel("HorizontalBlur");
+            _kernelVerticalBlur = fogCompute.FindKernel("VerticalBlur");
 
             fogCompute.SetInt("_chunkSize", _chunkSize);
             fogCompute.SetTexture(_kernelMain, "FogTex", _baseTexture);
             fogCompute.SetTexture(_kernelUpscale, "InputTex", _baseTexture);
             fogCompute.SetTexture(_kernelUpscale, "OutputTex", _fogTexture);
 
+            // Seperable Gaussian Blur
+            fogCompute.SetTexture(_kernelHorizontalBlur, "OutputTex", _fogTexture);
+            fogCompute.SetTexture(_kernelHorizontalBlur, "BlurTemp", _blurTemp);
+            fogCompute.SetTexture(_kernelVerticalBlur, "BlurTemp", _blurTemp);
+            fogCompute.SetTexture(_kernelVerticalBlur, "OutputTex", _fogTexture);
+
             int upscaleSize = _chunkSize * upscaleFactor;
             fogCompute.SetInts("_upscaleSize", upscaleSize, upscaleSize);
             fogCompute.SetFloats("_scaleFactor", upscaleFactor, upscaleFactor);
+            fogCompute.SetFloat("_blurStrength", blurStrength);
         }
 
         private void UpdateMaterialProperties()
@@ -151,6 +169,10 @@ namespace FogOfWar
             int upscaleThreadsX = Mathf.CeilToInt(_fogTexture.width / 8.0f);
             int upscaleThreadsY = Mathf.CeilToInt(_fogTexture.height / 8.0f);
             fogCompute.Dispatch(_kernelUpscale, upscaleThreadsX, upscaleThreadsY, 1);
+
+            // Apply blur
+            fogCompute.Dispatch(_kernelHorizontalBlur, Mathf.CeilToInt(_fogTexture.width / 256f), _fogTexture.height, 1);
+            fogCompute.Dispatch(_kernelVerticalBlur, _fogTexture.width, Mathf.CeilToInt(_fogTexture.height / 256f), 1);
         }
 
         private void OnDestroy() {
@@ -162,6 +184,10 @@ namespace FogOfWar
             if (_fogTexture != null) {
                 _fogTexture.Release();
                 _fogTexture = null;
+            }
+            if (_blurTemp != null) {
+                _blurTemp.Release();
+                _blurTemp = null;
             }
         }
     }
