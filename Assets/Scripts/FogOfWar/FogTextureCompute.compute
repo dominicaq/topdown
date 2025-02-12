@@ -1,70 +1,78 @@
 #pragma kernel CSMain
-#pragma kernel UpscaleFog
+#pragma kernel UpscaleFogTex
 #pragma kernel HorizontalBlur
 #pragma kernel VerticalBlur
+#pragma kernel LerpPass
 
-// Textures and buffers
+// Fog textures and buffers
 RWTexture2D<float4> FogTex;
+RWTexture2D<float4> PrevFogTex;
 StructuredBuffer<uint> LightMap;
+
+// Upscaling
 Texture2D<float4> InputTex;
 RWTexture2D<float4> OutputTex;
+
+// Blur
 RWTexture2D<float4> BlurTemp;
 
 // Parameters
-int _chunkSize;
-uint2 _upscaleSize;
-float2 _scaleFactor;
+uint _chunkSize;
+uint _tileSize;
+uint _upscaleSize;
+float _scaleFactor;
 float _blurStrength;
+float _lerpSpeed;
+float _deltaTime;
 
-// Optimized CSMain with larger thread groups
 [numthreads(8, 8, 1)]
 void CSMain(uint2 id : SV_DispatchThreadID)
 {
-    if (id.x >= (uint)_chunkSize || id.y >= (uint)_chunkSize)
+    uint tileX = id.x * 4;
+    uint tileY = id.y;
+
+    if (tileX >= _chunkSize || tileY >= _chunkSize)
         return;
 
-    // Process 4 tiles at once using bit operations
-    uint tileX = id.x;
-    uint tileY = id.y;
-    int packedIndex = (tileY * _chunkSize + tileX) >> 2;
-    uint shift = (tileX & 3) << 3;
-    uint tileByte = (LightMap[packedIndex] >> shift) & 0xFF;
+    int packedIndex = tileY * (_chunkSize >> 2) + id.x;
+    uint packedTiles = LightMap[packedIndex];
 
-    // Fast branching using bit operations
-    float alpha = (tileByte >> 7) ? 0.0 : ((tileByte >> 6) & 1) ? 0.7 : 1.0;
-    FogTex[id] = float4(0, 0, 0, alpha);
+    [unroll]
+    for (uint i = 0; i < 4; i++) {
+        uint shift = i * 8;
+        uint tileByte = (packedTiles >> shift) & 0xFF;
+
+        float alpha = (tileByte >> 7) ? 0.0 : ((tileByte >> 6) & 1) ? 0.7 : 1.0;
+
+        uint2 pixelPos = uint2(tileX + i, tileY);
+        FogTex[pixelPos] = float4(0, 0, 0, alpha);
+    }
 }
 
-// Fast nearest-neighbor upscale with minimal texture fetches
 [numthreads(16, 16, 1)]
-void UpscaleFog(uint2 id : SV_DispatchThreadID)
+void UpscaleFogTex(uint2 id : SV_DispatchThreadID)
 {
-    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+    if (id.x >= _upscaleSize || id.y >= _upscaleSize)
         return;
 
-    // Simple and fast upscale calculation
-    uint2 sourcePos = uint2(id.x / _scaleFactor.x, id.y / _scaleFactor.y);
+    uint2 sourcePos = uint2(id.x / _scaleFactor, id.y / _scaleFactor);
     float4 color = InputTex[sourcePos];
 
     OutputTex[id] = color;
 }
 
-// Separable Gaussian blur - horizontal pass
 [numthreads(256, 1, 1)]
 void HorizontalBlur(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+    if (id.x >= _upscaleSize || id.y >= _upscaleSize)
         return;
 
-    // Fast 5-tap blur
     float weights[3] = { 0.4026, 0.2442, 0.0545 };
-
     float4 color = OutputTex[uint2(id.x, id.y)] * weights[0];
 
     [unroll]
-    for (int i = 1; i < 3; i++)
-    {
-        uint x1 = min(id.x + i, _upscaleSize.x - 1);
+    for (int i = 1; i < _blurStrength; i++) {
+        uint x1 = min(id.x + i, _upscaleSize - 1);
         uint x2 = max(int(id.x) - i, 0);
 
         color += OutputTex[uint2(x1, id.y)] * weights[i];
@@ -74,22 +82,18 @@ void HorizontalBlur(uint3 id : SV_DispatchThreadID)
     BlurTemp[id.xy] = color;
 }
 
-// Separable Gaussian blur - vertical pass
 [numthreads(1, 256, 1)]
 void VerticalBlur(uint3 id : SV_DispatchThreadID)
 {
-    if (id.x >= _upscaleSize.x || id.y >= _upscaleSize.y)
+    if (id.x >= _upscaleSize || id.y >= _upscaleSize)
         return;
 
-    // Fast 5-tap blur
     float weights[3] = { 0.4026, 0.2442, 0.0545 };
-
     float4 color = BlurTemp[uint2(id.x, id.y)] * weights[0];
 
     [unroll]
-    for (int i = 1; i < 3; i++)
-    {
-        uint y1 = min(id.y + i, _upscaleSize.y - 1);
+    for (int i = 1; i < _blurStrength; i++) {
+        uint y1 = min(id.y + i, _upscaleSize - 1);
         uint y2 = max(int(id.y) - i, 0);
 
         color += BlurTemp[uint2(id.x, y1)] * weights[i];
@@ -97,4 +101,23 @@ void VerticalBlur(uint3 id : SV_DispatchThreadID)
     }
 
     OutputTex[id.xy] = color;
+}
+
+[numthreads(8, 8, 1)]
+void LerpPass(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _upscaleSize || id.y >= _upscaleSize)
+        return;
+
+    float4 fogCurrent = FogTex[id.xy];
+    float4 fogPrevious = PrevFogTex[id.xy];
+
+    // Calculate a fast transition factor
+    float lerpFactor = saturate(_lerpSpeed * _deltaTime * 15.0);
+
+    // Use a modified power curve for quick fade
+    float quickFade = pow(lerpFactor, 0.3);
+
+    // Perform the interpolation
+    FogTex[id.xy] = lerp(fogPrevious, fogCurrent, quickFade);
 }
