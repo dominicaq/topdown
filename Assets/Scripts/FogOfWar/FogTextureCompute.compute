@@ -112,12 +112,19 @@ void LerpPass(uint3 id : SV_DispatchThreadID)
     float4 fogCurrent = FogTex[id.xy];
     float4 fogPrevious = PrevFogTex[id.xy];
 
-    // Calculate a fast transition factor
     float lerpFactor = saturate(_lerpSpeed * _deltaTime * 15.0);
-
-    // Use a modified power curve for quick fade
     float quickFade = pow(lerpFactor, 0.3);
 
-    // Perform the interpolation
-    FogTex[id.xy] = lerp(fogPrevious, fogCurrent, quickFade);
+    // Only force opacity when the target state is fully opaque
+    if (fogCurrent.a >= 0.99)
+    {
+        // Accelerate the transition to full opacity
+        float adjustedLerp = pow(quickFade, 0.5); // Makes transition to black faster
+        FogTex[id.xy] = lerp(fogPrevious, float4(0,0,0,1), adjustedLerp);
+    }
+    else
+    {
+        // Normal lerp for all other cases
+        FogTex[id.xy] = lerp(fogPrevious, fogCurrent, quickFade);
+    }
 }

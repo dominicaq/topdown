@@ -85,18 +85,22 @@ Material:
     m_Ints: []
     m_Floats:
     - _BlendOp: 0
+    - _BlurSize: 2
     - _BumpScale: 1
     - _CameraFadingEnabled: 0
     - _CameraFarFadeDistance: 2
     - _CameraNearFadeDistance: 1
     - _Cull: 2
     - _Cutoff: 1
+    - _DepthBias: 0
+    - _DepthEdgeFeather: 3.1
     - _DetailNormalMapScale: 1
     - _DistortionBlend: 0.5
     - _DistortionEnabled: 0
     - _DistortionStrength: 1
     - _DistortionStrengthScaled: 0
     - _DstBlend: 0
+    - _EdgeSoftness: 20
     - _EmissionEnabled: 0
     - _FlipbookMode: 0
     - _FogIntensity: 0.5
@@ -112,6 +116,7 @@ Material:
     - _SoftParticlesEnabled: 0
     - _SoftParticlesFarFadeDistance: 1
     - _SoftParticlesNearFadeDistance: 0
+    - _SoftnessFactor: 2
     - _SpecularHighlights: 0
     - _SrcBlend: 1
     - _UVSec: 0
