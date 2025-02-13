@@ -1,7 +1,6 @@
 using UnityEngine;
 using FogOfWar;
 using System.Collections.Generic;
-using System.Diagnostics;
 
 public class FogManager : MonoBehaviour
 {
@@ -9,7 +8,7 @@ public class FogManager : MonoBehaviour
     public int tileSize = 1;
     public int maxHeight = 32;
     public int chunkSize = 64;
-    private float _halfChunkSize;
+    private int _halfChunkSize;
 
     [Header("Chunk Data")]
     public TileData[,] lightMap;
@@ -23,20 +22,18 @@ public class FogManager : MonoBehaviour
     private Vector3 circularPosition;
 
     [Header("Shadow Casting")]
+    public float colBuffer = 0.2f;
     private int[,] _transforms = {
         { 0,  1,  1,  0 },  // North
         { 0, -1, -1,  0 },  // South
         { -1,  0,  0, -1 }, // West
         { 1,  0,  0,  1 }   // East
     };
-    private Stack<(int, float, float)> rowStack;
 
     void Start() {
-        _halfChunkSize = chunkSize * 0.5f;
-
         // Initialize the grid of TileData
+        _halfChunkSize = chunkSize / 2;
         lightMap = new TileData[chunkSize, chunkSize];
-        rowStack = new Stack<(int, float, float)>(64);
         InitGrid();
 
         // chunkCenter = new Vector2Int(chunkSize / 2, chunkSize / 2);
@@ -54,9 +51,7 @@ public class FogManager : MonoBehaviour
         circularPosition = new Vector3(x, 0, z);
 
         ResetFog(0);
-        for (int i = 0; i < 1; i++) {
-            RevealFog(circularPosition, 25);
-        }
+        RevealFog(circularPosition, 50);
     }
 
     /*
@@ -65,34 +60,39 @@ public class FogManager : MonoBehaviour
     private void InitGrid() {
         int numChunks = 4;
         int chunkGridSize = chunkSize / numChunks;
-        RaycastHit[] hits = new RaycastHit[1];
 
         for (int chunkX = 0; chunkX < numChunks; chunkX++) {
             for (int chunkZ = 0; chunkZ < numChunks; chunkZ++) {
-                InitChunk(chunkX, chunkZ, chunkGridSize, hits);
+                InitChunk(chunkX, chunkZ, chunkGridSize);
             }
         }
     }
 
-    private void InitChunk(int chunkX, int chunkZ, int chunkGridSize, RaycastHit[] hits) {
+    private void InitChunk(int chunkX, int chunkZ, int chunkGridSize) {
         for (int x = 0; x < chunkGridSize; x++) {
-            int globalX = chunkX * chunkGridSize + x;
-            float worldX = (globalX - _halfChunkSize + 0.5f) * tileSize;
-
             for (int z = 0; z < chunkGridSize; z++) {
+                // Calculate global tile coordinates
+                int globalX = chunkX * chunkGridSize + x;
                 int globalZ = chunkZ * chunkGridSize + z;
-                float worldZ = (globalZ - _halfChunkSize + 0.5f) * tileSize;
 
                 byte tileHeight = 0;
-                Vector3 origin = new Vector3(worldX, 100f, worldZ);
-                if (Physics.RaycastNonAlloc(origin, Vector3.down, hits, 200f) > 0) {
-                    tileHeight = (byte)Mathf.Clamp((int)hits[0].point.y, 0, maxHeight);
+
+                // Note: I noticed the grid positon was off center by -0.5f so I added 0.5f to x and z
+                // Perform a raycast from the tile's center downwards to create a discrete heightmap
+                Vector3 tileCenter = new Vector3(
+                    (globalX - _halfChunkSize + 0.5f) * tileSize,
+                    100f,
+                    (globalZ - _halfChunkSize + 0.5f) * tileSize
+                );
+                if (Physics.Raycast(tileCenter, Vector3.down, out RaycastHit hit)) {
+                    int height = Mathf.Clamp((int)Mathf.Floor(hit.point.y), 0, maxHeight);
+                    tileHeight = (byte)height;
                 }
 
                 lightMap[globalX, globalZ] = new TileData {
-                    Height = tileHeight,
                     Visible = false,
-                    Seen = false
+                    Seen = false,
+                    Height = tileHeight
                 };
             }
         }
@@ -132,18 +132,18 @@ public class FogManager : MonoBehaviour
     * Shadow Casting
     */
     private void CastLight(int quadrant, ref Vector3Int origin, int radius) {
-        rowStack.Push((1, -1f, 1f));
+        Stack<(int, float, float)> rows = new Stack<(int, float, float)>();
+        rows.Push((1, -1f, 1f)); // Start row (depth = 1, slopes = [-1, 1])
 
         int xx = _transforms[quadrant, 0];
         int xy = _transforms[quadrant, 1];
         int yx = _transforms[quadrant, 2];
         int yy = _transforms[quadrant, 3];
 
-        while (rowStack.Count > 0) {
-            var (depth, startSlope, endSlope) = rowStack.Pop();
-            // Adjust the column calculations to prevent gaps
-            int minCol = Mathf.FloorToInt(depth * startSlope);  // Changed from CeilToInt
-            int maxCol = Mathf.CeilToInt(depth * endSlope);     // Changed from FloorToInt
+        while (rows.Count > 0) {
+            var (depth, startSlope, endSlope) = rows.Pop();
+            int minCol = Mathf.CeilToInt(depth * startSlope);
+            int maxCol = Mathf.FloorToInt(depth * endSlope);
 
             int prevTx = -1, prevTy = -1;
 
@@ -163,13 +163,11 @@ public class FogManager : MonoBehaviour
 
                 bool isWall = IsBlocking(tx, ty, origin.z);
                 bool wasWall = prevTx != -1 && IsBlocking(prevTx, prevTy, origin.z);
-
-                // Add small overlap in slope calculations to prevent gaps
                 if (wasWall && !isWall) {
-                    startSlope = GetSlope(depth, col - 0.1f);
+                    startSlope = GetSlope(depth, col - colBuffer);
                 }
                 if (!wasWall && isWall) {
-                    rowStack.Push((depth + 1, startSlope, GetSlope(depth, col + 0.1f)));
+                    rows.Push((depth + 1, startSlope, GetSlope(depth, col + colBuffer)));
                 }
 
                 prevTx = tx;
@@ -177,7 +175,7 @@ public class FogManager : MonoBehaviour
             }
 
             if (prevTx != -1 && prevTy != -1 && !IsBlocking(prevTx, prevTy, origin.z)) {
-                rowStack.Push((depth + 1, startSlope, endSlope));
+                rows.Push((depth + 1, startSlope, endSlope));
             }
         }
     }
@@ -195,7 +193,7 @@ public class FogManager : MonoBehaviour
     }
 
     /*
-    * Debug
+    * Debugging
     */
     private void OnDrawGizmos() {
         if (lightMap == null || !drawGrid) {
@@ -215,7 +213,7 @@ public class FogManager : MonoBehaviour
 
                 // Set the tile color based on visibility
                 if (lightMap[x, z].Visible) {
-                    Gizmos.color = Color.red;
+                    Gizmos.color = Color.clear;
                 } else if (lightMap[x, z].Seen) {
                     Gizmos.color = Color.gray; // Previously seen but not currently visible
                 } else {
