@@ -12,12 +12,10 @@ public class FogManager : MonoBehaviour
 
     [Header("Chunk Data")]
     public TileData[,] lightMap;
-    private Vector2Int chunkCenter;
+    private RaycastHit[] _rayHits = new RaycastHit[3];
 
     [Header("Debugging")]
     public bool drawGrid = true;
-
-    // TEMP Debug (circular moving agent)
     private float angle = 0.0f;
     private Vector3 circularPosition;
 
@@ -34,12 +32,13 @@ public class FogManager : MonoBehaviour
         // Initialize the grid of TileData
         _halfChunkSize = chunkSize / 2;
         lightMap = new TileData[chunkSize, chunkSize];
-        InitGrid();
+        CreateChunk(0, 0);
 
         // chunkCenter = new Vector2Int(chunkSize / 2, chunkSize / 2);
     }
 
     void Update() {
+        // DEBUG
         float radius = 10.0f;
         float speed = 2.0f;
 
@@ -49,47 +48,62 @@ public class FogManager : MonoBehaviour
         float z = radius * Mathf.Sin(angle);
 
         circularPosition = new Vector3(x, 0, z);
+        // END OF DEBUG
 
         ResetFog(0);
         RevealFog(circularPosition, 50);
     }
 
+    // TODO: not tested
+    private Vector2Int WorldToTilePosition(Vector3 worldPosition) {
+        // Convert the world position to tile coordinates by dividing by tileSize
+        int x = Mathf.FloorToInt(worldPosition.x / tileSize) + chunkSize / 2;
+        int z = Mathf.FloorToInt(worldPosition.z / tileSize) + chunkSize / 2;
+        Debug.Log("WORLD POS:" + worldPosition);
+        // Clamp the coordinates to ensure they are within the grid bounds
+        x = Mathf.Clamp(x, 0, chunkSize - 1);
+        z = Mathf.Clamp(z, 0, chunkSize - 1);
+
+        Debug.Log("TILE POS:" + new Vector2Int(x,z));
+        return new Vector2Int(x, z);
+    }
+
     /*
     * Fog Chunk Management
     */
-    private void InitGrid() {
-        int numChunks = 4;
-        int chunkGridSize = chunkSize / numChunks;
-
-        for (int chunkX = 0; chunkX < numChunks; chunkX++) {
-            for (int chunkZ = 0; chunkZ < numChunks; chunkZ++) {
-                InitChunk(chunkX, chunkZ, chunkGridSize);
-            }
-        }
-    }
-
-    private void InitChunk(int chunkX, int chunkZ, int chunkGridSize) {
-        for (int x = 0; x < chunkGridSize; x++) {
-            for (int z = 0; z < chunkGridSize; z++) {
+    private void CreateChunk(int chunkX, int chunkZ) {
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
                 // Calculate global tile coordinates
-                int globalX = chunkX * chunkGridSize + x;
-                int globalZ = chunkZ * chunkGridSize + z;
+                int globalX = chunkX * chunkSize + x;
+                int globalZ = chunkZ * chunkSize + z;
 
-                byte tileHeight = 0;
-
-                // Note: I noticed the grid positon was off center by -0.5f so I added 0.5f to x and z
-                // Perform a raycast from the tile's center downwards to create a discrete heightmap
-                Vector3 tileCenter = new Vector3(
+                // Calculate tile center position
+                Vector3 tilePos = new Vector3(
                     (globalX - _halfChunkSize + 0.5f) * tileSize,
-                    100f,
+                    maxHeight,
                     (globalZ - _halfChunkSize + 0.5f) * tileSize
                 );
-                if (Physics.Raycast(tileCenter, Vector3.down, out RaycastHit hit)) {
-                    int height = Mathf.Clamp((int)Mathf.Floor(hit.point.y), 0, maxHeight);
-                    tileHeight = (byte)height;
+
+                // Calculate tile height
+                byte tileHeight = 0;
+                int hits = Physics.RaycastNonAlloc(tilePos, Vector3.down, _rayHits);
+                if (hits > 0) {
+                    float closestDistance = float.MaxValue;
+                    float closestHeight = 0f;
+
+                    for (int i = 0; i < hits; i++) {
+                        if (_rayHits[i].distance < closestDistance) {
+                            closestDistance = _rayHits[i].distance;
+                            closestHeight = _rayHits[i].point.y;
+                        }
+                    }
+
+                    tileHeight = (byte)Mathf.Clamp(closestHeight, 0f, maxHeight);
                 }
 
-                lightMap[globalX, globalZ] = new TileData {
+                // Initialize tile data
+                lightMap[x, z] = new TileData {
                     Visible = false,
                     Seen = false,
                     Height = tileHeight
@@ -213,11 +227,14 @@ public class FogManager : MonoBehaviour
 
                 // Set the tile color based on visibility
                 if (lightMap[x, z].Visible) {
+                    // Visible
                     Gizmos.color = Color.clear;
                 } else if (lightMap[x, z].Seen) {
-                    Gizmos.color = Color.gray; // Previously seen but not currently visible
+                    // Visited but not visible
+                    Gizmos.color = Color.gray;
                 } else {
-                    Gizmos.color = Color.black; // Never seen
+                    // Never seen
+                    Gizmos.color = Color.black;
                 }
 
                 Gizmos.DrawWireCube(position, new Vector3(tileSize, 0.1f, tileSize));
@@ -225,19 +242,3 @@ public class FogManager : MonoBehaviour
         }
     }
 }
-
-
-
-    // private Vector2Int WorldToTilePosition(Vector3 worldPosition)
-    // {
-    //     // Convert the world position to tile coordinates by dividing by tileSize
-    //     int x = Mathf.FloorToInt(worldPosition.x / tileSize) + chunkSize / 2;
-    //     int z = Mathf.FloorToInt(worldPosition.z / tileSize) + chunkSize / 2;
-    //     Debug.Log("WORLD POS:" + worldPosition);
-    //     // Clamp the coordinates to ensure they are within the grid bounds
-    //     x = Mathf.Clamp(x, 0, chunkSize - 1);
-    //     z = Mathf.Clamp(z, 0, chunkSize - 1);
-
-    //     Debug.Log("TILE POS:" + new Vector2Int(x,z));
-    //     return new Vector2Int(x, z);
-    // }

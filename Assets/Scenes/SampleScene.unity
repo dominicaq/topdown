@@ -715,7 +715,7 @@ MonoBehaviour:
   fogCompute: {fileID: 7200000, guid: 9c6d19100a0b04253b2ef685efecf084, type: 3}
   lerpSpeed: 0.001
   upscaleFactor: 1
-  blurStrength: 5
+  blurStrength: 3
   _fogTexture: {fileID: 0}
   _prevFogTexture: {fileID: 0}
 --- !u!20 &1140297687
