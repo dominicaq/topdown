@@ -20,7 +20,6 @@ public class FogManager : MonoBehaviour
     private Vector3 circularPosition;
 
     [Header("Shadow Casting")]
-    public float colBuffer = 0.2f;
     private int[,] _transforms = {
         { 0,  1,  1,  0 },  // North
         { 0, -1, -1,  0 },  // South
@@ -161,41 +160,55 @@ public class FogManager : MonoBehaviour
 
             int prevTx = -1, prevTy = -1;
 
-            for (int col = minCol; col <= maxCol; col++) {
+            for (int col = minCol; col < maxCol + 1; col++) {
                 int dx = depth * xx + col * xy;
                 int dy = depth * yx + col * yy;
                 int tx = origin.x + dx;
                 int ty = origin.y + dy;
 
+                // Vision shape (circle)
                 int distSquared = dx * dx + dy * dy;
-                if (!IsInBounds(tx, ty) || (distSquared > radius * radius)) {
+                if (!IsInBounds(tx, ty) || (distSquared > radius * radius))
                     continue;
-                }
 
-                lightMap[tx, ty].Visible = true;
-                lightMap[tx, ty].Seen = true;
-
+                // Current tile state
                 bool isWall = IsBlocking(tx, ty, origin.z);
+                bool isFloor = !isWall;
+
+                // Prev tile state
                 bool wasWall = prevTx != -1 && IsBlocking(prevTx, prevTy, origin.z);
-                if (wasWall && !isWall) {
-                    startSlope = GetSlope(depth, col - colBuffer);
+                bool wasFloor = !wasWall;
+
+                // Reveal tile
+                if (isWall || IsSymmmetric(depth, startSlope, endSlope, col)) {
+                    lightMap[tx, ty].Visible = true;
+                    lightMap[tx, ty].Seen = true;
                 }
-                if (!wasWall && isWall) {
-                    rows.Push((depth + 1, startSlope, GetSlope(depth, col + colBuffer)));
+
+                // Calculate slopes for next itteration
+                if (wasWall && isFloor) {
+                    startSlope = GetSlope(depth, col);
+                }
+                if (wasFloor && isWall) {
+                    rows.Push((depth + 1, startSlope, GetSlope(depth, col)));
                 }
 
                 prevTx = tx;
                 prevTy = ty;
             }
 
-            if (prevTx != -1 && prevTy != -1 && !IsBlocking(prevTx, prevTy, origin.z)) {
+            if (prevTx != -1 && !IsBlocking(prevTx, prevTy, origin.z)) {
                 rows.Push((depth + 1, startSlope, endSlope));
             }
         }
     }
 
-    private float GetSlope(int depth, float col) {
-        return (2f * col - 1) / (2f * depth);
+    private bool IsSymmmetric(int depth, float startSlope, float endSlope, int col) {
+        return col >= depth * startSlope && col <= depth * endSlope;
+    }
+
+    private float GetSlope(float depth, float col) {
+        return (2.0f * col - 1.0f) / (2.0f * depth);
     }
 
     private bool IsBlocking(int x, int y, int height) {
@@ -214,7 +227,7 @@ public class FogManager : MonoBehaviour
             return;
         }
 
-        Gizmos.color = Color.red;
+        Gizmos.color = Color.green;
         Gizmos.DrawSphere(circularPosition, 0.5f);
         for (int x = 0; x < chunkSize; x++) {
             for (int z = 0; z < chunkSize; z++) {
@@ -228,7 +241,7 @@ public class FogManager : MonoBehaviour
                 // Set the tile color based on visibility
                 if (lightMap[x, z].Visible) {
                     // Visible
-                    Gizmos.color = Color.clear;
+                    Gizmos.color = Color.red;
                 } else if (lightMap[x, z].Seen) {
                     // Visited but not visible
                     Gizmos.color = Color.gray;
