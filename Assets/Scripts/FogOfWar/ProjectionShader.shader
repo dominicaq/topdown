@@ -87,7 +87,10 @@ Shader "FogOfWar/ProjectedFog" {
                     return originalColor;
                 }
 
+                // Adjust fog UV calculation to account for scale factor
                 float2 fogUV = (projUV.xy * 0.5 + 0.5);
+
+                // Sample fog texture with proper scaling
                 fixed4 fogColor = tex2D(_FogTex, fogUV);
 
                 return lerp(originalColor, fogColor, fogColor.a);

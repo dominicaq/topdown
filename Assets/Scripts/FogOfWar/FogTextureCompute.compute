@@ -55,7 +55,12 @@ void UpscaleFogTex(uint2 id : SV_DispatchThreadID)
     if (id.x >= _upscaleSize || id.y >= _upscaleSize)
         return;
 
-    uint2 sourcePos = uint2(id.x / _scaleFactor, id.y / _scaleFactor);
+    // Properly calculate source position based on scale factor
+    // Use floor to ensure correct pixel mapping
+    uint2 sourcePos = uint2(floor(id.x / _scaleFactor), floor(id.y / _scaleFactor));
+
+    // Optional: Use bilinear sampling if you want smoother upscaling
+    // This would need texture sampling functions if available in your compute shader
     float4 color = InputTex[sourcePos];
 
     OutputTex[id] = color;

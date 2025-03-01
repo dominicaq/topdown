@@ -521,7 +521,7 @@ Transform:
   m_GameObject: {fileID: 963194225}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: 0, z: 0, w: 0.8660254}
-  m_LocalPosition: {x: 0, y: 35, z: -11.17}
+  m_LocalPosition: {x: 0, y: 51.1, z: -49.3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -641,13 +641,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1054297342}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: 0.8542346, z: -0, w: 0.5198878}
-  m_LocalPosition: {x: 21.8, y: 0.6, z: 8.8}
+  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
+  m_LocalPosition: {x: 28.2, y: 0.6, z: 12.8}
   m_LocalScale: {x: 2.8426538, y: 12.092751, z: 50.74613}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 117.351, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
 --- !u!1 &1140297682
 GameObject:
   m_ObjectHideFlags: 0
@@ -698,7 +698,6 @@ MonoBehaviour:
   maxHeight: 32
   chunkSize: 256
   drawGrid: 1
-  colBuffer: 0.2
 --- !u!114 &1140297686
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -714,7 +713,7 @@ MonoBehaviour:
   fogMaterial: {fileID: 2100000, guid: 452206851eca94ffe95c5419f9163a5e, type: 2}
   fogCompute: {fileID: 7200000, guid: 9c6d19100a0b04253b2ef685efecf084, type: 3}
   lerpSpeed: 0.001
-  upscaleFactor: 1
+  upscaleFactor: 2
   blurStrength: 3
   _fogTexture: {fileID: 0}
   _prevFogTexture: {fileID: 0}
@@ -1009,13 +1008,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1437532042}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0.7071068, z: 0, w: 0.7071068}
-  m_LocalPosition: {x: -7.8, y: 0.3, z: 34.9}
-  m_LocalScale: {x: 10.673975, y: 25.24, z: 204.25319}
+  m_LocalRotation: {x: 0, y: 0, z: 0.5, w: 0.8660254}
+  m_LocalPosition: {x: -47.8, y: 0.3, z: 16.7}
+  m_LocalScale: {x: 6.2095065, y: 25.24, z: 204.25319}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 90, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 60}
 --- !u!1 &1678791012
 GameObject:
   m_ObjectHideFlags: 0

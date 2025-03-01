@@ -131,13 +131,28 @@ public class FogManager : MonoBehaviour
         if (!IsInBounds(centerX, centerY))
             return;
 
-        lightMap[centerX, centerY].Visible = true;
-        lightMap[centerX, centerY].Seen = true;
+        // Perform shadow casting for extended visibility
         int centerHeight = lightMap[centerX, centerY].Height;
-
         Vector3Int origin = new Vector3Int(centerX, centerY, centerHeight);
         for (int octant = 0; octant < 4; octant++) {
-            CastLight(octant , ref origin, radius);
+            CastLight(octant, ref origin, radius);
+        }
+
+        // 2nd pass on visiblity map since shadow casting creates artifacts, clean it up
+        CleanupWallArtifacts(origin);
+
+        // Reveal the immediate 3x3 area around the agent
+        for (int x = -1; x <= 1; x++) {
+            for (int y = -1; y <= 1; y++) {
+                int tileX = centerX + x;
+                int tileY = centerY + y;
+
+                // Check if the tile is within bounds
+                if (IsInBounds(tileX, tileY)) {
+                    lightMap[tileX, tileY].Visible = true;
+                    lightMap[tileX, tileY].Seen = true;
+                }
+            }
         }
     }
 
@@ -217,6 +232,44 @@ public class FogManager : MonoBehaviour
 
     private bool IsInBounds(int x, int y) {
         return x >= 0 && x < chunkSize && y >= 0 && y < chunkSize;
+    }
+
+    private void CleanupWallArtifacts(Vector3Int origin) {
+        // Get the height of the origin tile
+        int originHeight = origin.z;
+
+        // Identify visible tiles and their adjacent walls
+        for (int x = 0; x < chunkSize; x++) {
+            for (int z = 0; z < chunkSize; z++) {
+                if (!lightMap[x, z].Visible) continue;
+
+                // Check adjacent tiles (8 directions for better coverage)
+                for (int dx = -1; dx <= 1; dx++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        // Skip the center tile
+                        if (dx == 0 && dz == 0) continue;
+
+                        int nx = x + dx;
+                        int nz = z + dz;
+
+                        // Make sure the neighbor is in bounds
+                        if (IsInBounds(nx, nz)) {
+                            // Only reveal walls that:
+                            // 1. Are not already visible
+                            // 2. Are higher than the current visible tile
+                            // 3. Have a height that's visible from the origin (either same height or higher)
+                            if (!lightMap[nx, nz].Visible &&
+                                lightMap[nx, nz].Height > lightMap[x, z].Height &&
+                                lightMap[nx, nz].Height >= originHeight) {
+                                // Immediately make it visible
+                                lightMap[nx, nz].Visible = true;
+                                lightMap[nx, nz].Seen = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /*

@@ -180,18 +180,24 @@ namespace FogOfWar
             _lightMapBuffer.SetData(lightMapData);
             fogCompute.SetBuffer(_kernelMain, "LightMap", _lightMapBuffer);
 
-            int threadGroupsX = Mathf.CeilToInt(_baseTexture.width / 8.0f);
-            int threadGroupsY = Mathf.CeilToInt(_baseTexture.height / 8.0f);
-
             // Dispatch main kernel to write to base texture
+            int threadGroupsX = Mathf.CeilToInt(_chunkSize / 8.0f);
+            int threadGroupsY = Mathf.CeilToInt(_chunkSize / 8.0f);
             fogCompute.Dispatch(_kernelMain, threadGroupsX, threadGroupsY, 1);
-            // Upscale the texture
-            fogCompute.Dispatch(_kernelUpscale, threadGroupsX, threadGroupsY, 1);
-            // Apply seperable blur
-            fogCompute.Dispatch(_kernelHorizontalBlur, threadGroupsX, threadGroupsY, 1);
-            fogCompute.Dispatch(_kernelVerticalBlur, threadGroupsX, threadGroupsY, 1);
-            // Lerp between fog states
-            fogCompute.Dispatch(_kernelLerp, threadGroupsX, threadGroupsY, 1);
+
+            // Calculate appropriate thread groups for the upscaled size
+            int upscaledSize = _chunkSize * _tileSize * upscaleFactor;
+            int upscaledThreadGroupsX = Mathf.CeilToInt(upscaledSize / 16.0f);
+            int upscaledThreadGroupsY = Mathf.CeilToInt(upscaledSize / 16.0f);
+            // Upscale the texture (use appropriate thread groups)
+            fogCompute.Dispatch(_kernelUpscale, upscaledThreadGroupsX, upscaledThreadGroupsY, 1);
+
+            // Apply seperable blur (use appropriate thread groups)
+            fogCompute.Dispatch(_kernelHorizontalBlur, upscaledThreadGroupsX, upscaledThreadGroupsY, 1);
+            fogCompute.Dispatch(_kernelVerticalBlur, upscaledThreadGroupsX, upscaledThreadGroupsY, 1);
+
+            // Lerp between fog states (use appropriate thread groups)
+            // fogCompute.Dispatch(_kernelLerp, upscaledThreadGroupsX, upscaledThreadGroupsY, 1);
         }
 
         private void OnDestroy() {
